@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BUGMe – Explore & Save</title>
+<link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,700;0,900;1,700&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+html, body { width: 100%; height: 100%; overflow: hidden; margin: 0; padding: 0; }
+:root {
+  --bg: #1a1f16; --surface: #222820; --surface2: #2a302a; --surface3: #323830;
+  --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.14);
+  --green: #5a8a3c; --green-bright: #7ab84e; --green-dim: rgba(90,138,60,0.15);
+  --orange: #e87c2b; --orange-dim: rgba(232,124,43,0.15); --orange-bright: #f59542;
+  --cream: #f0ead8; --text: #ede8dc; --text-muted: #7e8872; --text-dim: #4a5040;
+  --teal: #4db8a0; --teal-dim: rgba(77,184,160,0.12); --sidebar-w: 340px; --radius: 9px;
+}
+body { font-family: 'DM Sans', sans-serif; background: var(--bg); color: var(--text); }
+#app { display: flex; width: 100vw; height: 100vh; position: fixed; top: 0; left: 0; }
+#loading-screen { position: fixed; inset: 0; background: var(--bg); display: flex; flex-direction: column; align-items: center; justify-content: center; z-index: 999; gap: 16px; }
+#loading-screen .l-bug { font-size: 48px; animation: bounce 1s infinite; }
+@keyframes bounce { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-10px); } }
+#loading-screen .l-title { font-family: 'Playfair Display', serif; font-size: 20px; color: var(--orange); }
+#loading-screen .l-sub { font-size: 13px; color: var(--text-muted); }
+#loading-bar-wrap { width: 200px; height: 3px; background: var(--surface2); border-radius: 3px; overflow: hidden; }
+#loading-bar { height: 100%; background: var(--orange); border-radius: 3px; width: 0%; transition: width 0.3s; }
+#sidebar { width: var(--sidebar-w); min-width: var(--sidebar-w); background: var(--surface); border-right: 1px solid var(--border); display: flex; flex-direction: column; overflow: hidden; z-index: 10; height: 100vh; }
+#sidebar-header { padding: 16px 16px 12px; border-bottom: 1px solid var(--border); flex-shrink: 0; background: linear-gradient(135deg, #1e2419 0%, #222820 100%); }
+.logo-row { display: flex; align-items: center; gap: 9px; margin-bottom: 13px; }
+.logo-bug { font-size: 26px; }
+.logo-text { font-family: 'Playfair Display', serif; font-size: 11px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase; line-height: 1.2; }
+.logo-text .lt1 { color: var(--orange); } .logo-text .lt2 { color: var(--cream); }
+.logo-text .lt3 { color: var(--text-muted); font-size: 9px; letter-spacing: 0.18em; font-weight: 400; font-family: 'DM Sans', sans-serif; }
+#search-wrap { position: relative; margin-bottom: 9px; }
+#search { width: 100%; background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 9px 12px 9px 32px; color: var(--text); font-family: 'DM Sans', sans-serif; font-size: 13px; outline: none; transition: border-color 0.2s; }
+#search:focus { border-color: var(--orange); } #search::placeholder { color: var(--text-muted); }
+.search-ico { position: absolute; left: 10px; top: 50%; transform: translateY(-50%); color: var(--text-muted); font-size: 12px; pointer-events: none; }
+#offers-toggle { display: flex; align-items: center; gap: 9px; background: var(--teal-dim); border: 1px solid rgba(77,184,160,0.2); border-radius: var(--radius); padding: 8px 12px; cursor: pointer; transition: all 0.2s; user-select: none; }
+#offers-toggle:hover { border-color: rgba(77,184,160,0.4); } #offers-toggle.active { background: rgba(77,184,160,0.2); border-color: var(--teal); }
+.ot-dot { width: 7px; height: 7px; border-radius: 50%; background: var(--teal); box-shadow: 0 0 5px var(--teal); flex-shrink: 0; transition: box-shadow 0.2s; }
+#offers-toggle.active .ot-dot { box-shadow: 0 0 10px var(--teal); }
+.ot-text { flex: 1; font-size: 12px; font-weight: 600; color: var(--teal); letter-spacing: 0.04em; }
+.ot-count { font-size: 10px; font-weight: 700; background: var(--teal); color: #0a1a16; border-radius: 20px; padding: 1px 7px; }
+#filter-toggle-btn { display: flex; align-items: center; justify-content: space-between; padding: 10px 16px; background: var(--surface2); border-bottom: 1px solid var(--border); cursor: pointer; flex-shrink: 0; font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-muted); transition: color 0.2s; user-select: none; }
+#filter-toggle-btn:hover { color: var(--text); }
+.ftb-right { display: flex; align-items: center; gap: 8px; }
+#active-filter-count { font-size: 10px; font-weight: 700; background: var(--orange); color: white; border-radius: 20px; padding: 1px 7px; display: none; }
+#active-filter-count.show { display: inline; }
+#filter-panel { background: var(--surface); border-bottom: 1px solid var(--border); overflow-y: auto; max-height: 0; transition: max-height 0.3s ease; flex-shrink: 0; }
+#filter-panel.open { max-height: 320px; }
+#filter-panel::-webkit-scrollbar { width: 3px; } #filter-panel::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+.filter-group { padding: 10px 14px 8px; border-bottom: 1px solid var(--border); } .filter-group:last-child { border-bottom: none; }
+.fg-label { font-size: 9px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase; color: var(--text-dim); margin-bottom: 7px; }
+.fg-tags { display: flex; flex-wrap: wrap; gap: 4px; }
+.tag-btn { padding: 3px 9px; border-radius: 20px; font-size: 11px; font-weight: 500; border: 1px solid var(--border); background: transparent; color: var(--text-muted); cursor: pointer; transition: all 0.15s; font-family: 'DM Sans', sans-serif; white-space: nowrap; }
+.tag-btn:hover { border-color: var(--border2); color: var(--text); } .tag-btn.active { border-color: var(--orange); color: var(--orange); background: var(--orange-dim); }
+#results-header { display: flex; align-items: center; justify-content: space-between; padding: 9px 16px 5px; flex-shrink: 0; }
+#result-count { font-size: 11px; font-weight: 600; color: var(--text-muted); letter-spacing: 0.06em; }
+#clear-btn { font-size: 11px; color: var(--text-muted); cursor: pointer; background: none; border: none; font-family: 'DM Sans', sans-serif; padding: 2px 6px; border-radius: 4px; transition: color 0.2s; }
+#clear-btn:hover { color: var(--orange); }
+#results-list { flex: 1; overflow-y: auto; padding: 4px 8px 8px; }
+#results-list::-webkit-scrollbar { width: 3px; } #results-list::-webkit-scrollbar-thumb { background: var(--border2); border-radius: 3px; }
+.biz-card { background: var(--surface2); border: 1px solid var(--border); border-radius: var(--radius); padding: 10px; margin-bottom: 5px; cursor: pointer; transition: border-color 0.15s, background 0.15s; animation: fadeUp 0.2s ease both; }
+@keyframes fadeUp { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+.biz-card:hover { border-color: var(--border2); background: var(--surface3); } .biz-card.selected { border-color: var(--orange); background: rgba(232,124,43,0.06); }
+.card-name { font-size: 13px; font-weight: 600; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 2px; }
+.card-addr { font-size: 11px; color: var(--text-muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; margin-bottom: 5px; }
+.card-tags { display: flex; gap: 4px; flex-wrap: wrap; }
+.card-tag { font-size: 9px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--text-dim); background: var(--surface3); border: 1px solid var(--border); padding: 1px 6px; border-radius: 8px; }
+.badge-pass { font-size: 9px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; background: var(--teal-dim); color: var(--teal); border: 1px solid rgba(77,184,160,0.25); padding: 1px 7px; border-radius: 8px; }
+#map { flex: 1; height: 100vh; }
+.map-pin { width: 28px; height: 28px; border-radius: 50%; background: var(--orange); border: 2px solid rgba(255,255,255,0.25); display: flex; align-items: center; justify-content: center; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; font-size: 11px; font-weight: 700; color: white; box-shadow: 0 2px 8px rgba(0,0,0,0.4); }
+.map-pin:hover { transform: scale(1.2); box-shadow: 0 4px 14px rgba(232,124,43,0.5); }
+.map-pin.offer { background: var(--teal); box-shadow: 0 2px 8px rgba(0,0,0,0.4), 0 0 0 2px rgba(77,184,160,0.35); }
+.map-pin.selected { transform: scale(1.35); box-shadow: 0 0 0 3px white, 0 4px 16px rgba(0,0,0,0.5); z-index: 10; }
+#geocode-status { position: absolute; bottom: 80px; left: 50%; transform: translateX(-50%); background: rgba(26,31,22,0.92); border: 1px solid var(--border2); border-radius: 20px; padding: 6px 14px; font-size: 11px; color: var(--text-muted); display: none; z-index: 50; backdrop-filter: blur(8px); white-space: nowrap; }
+#geocode-status.show { display: block; }
+#detail-panel { position: absolute; right: 14px; top: 14px; width: 300px; background: var(--surface); border: 1px solid var(--border2); border-radius: 14px; overflow: hidden; z-index: 100; display: none; box-shadow: 0 20px 60px rgba(0,0,0,0.55); }
+#detail-panel.open { display: block; animation: panelIn 0.22s ease; }
+@keyframes panelIn { from { opacity: 0; transform: translateX(8px) scale(0.98); } to { opacity: 1; transform: translateX(0) scale(1); } }
+#detail-img-wrap { width: 100%; height: 120px; background: linear-gradient(135deg, #1e2419, #2a3520); display: flex; align-items: center; justify-content: center; font-size: 46px; position: relative; overflow: hidden; }
+#detail-close { position: absolute; top: 8px; right: 8px; width: 26px; height: 26px; background: rgba(0,0,0,0.55); border: none; border-radius: 50%; cursor: pointer; color: white; font-size: 13px; display: flex; align-items: center; justify-content: center; backdrop-filter: blur(4px); z-index: 2; }
+#detail-offer-img-badge { position: absolute; bottom: 8px; left: 8px; font-size: 9px; font-weight: 700; letter-spacing: 0.07em; text-transform: uppercase; background: var(--teal); color: #0a1a16; padding: 3px 9px; border-radius: 20px; display: none; }
+#detail-body { padding: 14px; }
+#detail-name { font-family: 'Playfair Display', serif; font-size: 16px; font-weight: 700; margin-bottom: 6px; line-height: 1.3; }
+#detail-tags { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 9px; }
+.dp-tag { font-size: 9px; font-weight: 600; letter-spacing: 0.05em; text-transform: uppercase; color: var(--green-bright); background: var(--green-dim); border: 1px solid rgba(90,138,60,0.25); padding: 2px 7px; border-radius: 8px; }
+#detail-desc { font-size: 12px; color: var(--text-muted); line-height: 1.65; margin-bottom: 10px; max-height: 80px; overflow-y: auto; }
+.detail-row { display: flex; align-items: flex-start; gap: 6px; font-size: 11px; color: var(--text-muted); margin-bottom: 4px; }
+#detail-offer-row { display: none; align-items: center; gap: 8px; background: var(--teal-dim); border: 1px solid rgba(77,184,160,0.2); border-radius: 8px; padding: 9px 11px; margin: 10px 0; }
+.offer-label { font-size: 12px; font-weight: 600; color: var(--teal); }
+.offer-sublabel { font-size: 10px; color: var(--text-muted); margin-top: 1px; }
+#detail-link { display: block; background: var(--orange); color: white; font-size: 12px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; text-align: center; text-decoration: none; padding: 9px; border-radius: 7px; margin-top: 10px; transition: background 0.2s; }
+#detail-link:hover { background: var(--orange-bright); }
+#empty { display: none; flex-direction: column; align-items: center; justify-content: center; padding: 30px 20px; text-align: center; color: var(--text-muted); }
+#empty.show { display: flex; } #empty .e-ico { font-size: 34px; margin-bottom: 10px; opacity: 0.5; }
+#empty p { font-size: 12px; line-height: 1.6; }
+.mapboxgl-ctrl-group { background: var(--surface) !important; border: 1px solid var(--border2) !important; }
+.mapboxgl-ctrl-group button { color: var(--text-muted) !important; }
+.mapboxgl-ctrl-group button:hover { background: var(--surface2) !important; }
+@media (max-width: 640px) {
+  #app { flex-direction: column-reverse; }
+  #sidebar { width: 100%; min-width: 100%; height: 52vh; border-right: none; border-top: 1px solid var(--border); }
+  #map { height: 48vh; }
+  #detail-panel { right: 8px; top: 8px; width: calc(100% - 16px); }
+}
+</style>
+</head>
+<body>
+<div id="loading-screen">
+  <div class="l-bug">🐞</div>
+  <div class="l-title">Don't BugMe I'm On Vacation</div>
+  <div class="l-sub">Loading businesses…</div>
+  <div id="loading-bar-wrap"><div id="loading-bar"></div></div>
+</div>
+<div id="app">
+  <div id="sidebar">
+    <div id="sidebar-header">
+      <div class="logo-row">
+        <span class="logo-bug">🐞</span>
+        <div class="logo-text">
+          <div class="lt1">Don't BugMe</div>
+          <div class="lt2">I'm On Vacation</div>
+          <div class="lt3">Road Trip Pass Map</div>
+        </div>
+      </div>
+      <div id="search-wrap">
+        <span class="search-ico">🔍</span>
+        <input id="search" type="text" placeholder="Search by name, activity, location…">
+      </div>
+      <div id="offers-toggle">
+        <div class="ot-dot"></div>
+        <div class="ot-text">Road Trip Pass Offers Only</div>
+        <div class="ot-count" id="offer-count">0</div>
+      </div>
+    </div>
+    <div id="filter-toggle-btn">
+      <span>🏷️ Filter by Tags</span>
+      <div class="ftb-right"><span id="active-filter-count">0</span><span id="filter-arrow">▼</span></div>
+    </div>
+    <div id="filter-panel">
+      <div class="filter-group"><div class="fg-label">🌊 Water</div><div class="fg-tags" id="fg-water"></div></div>
+      <div class="filter-group"><div class="fg-label">⛰️ Land</div><div class="fg-tags" id="fg-land"></div></div>
+      <div class="filter-group"><div class="fg-label">❄️ Snow & Air</div><div class="fg-tags" id="fg-snow"></div></div>
+      <div class="filter-group"><div class="fg-label">🌿 Nature</div><div class="fg-tags" id="fg-nature"></div></div>
+      <div class="filter-group"><div class="fg-label">🧭 Tours</div><div class="fg-tags" id="fg-tours"></div></div>
+      <div class="filter-group"><div class="fg-label">👨‍👩‍👧 Who</div><div class="fg-tags" id="fg-who"></div></div>
+      <div class="filter-group"><div class="fg-label">⏱️ Duration</div><div class="fg-tags" id="fg-duration"></div></div>
+      <div class="filter-group"><div class="fg-label">🌤️ Season</div><div class="fg-tags" id="fg-season"></div></div>
+      <div class="filter-group"><div class="fg-label">💪 Level</div><div class="fg-tags" id="fg-level"></div></div>
+      <div class="filter-group"><div class="fg-label">🏕️ Stay & More</div><div class="fg-tags" id="fg-stay"></div></div>
+      <div style="padding:8px 14px 10px;"><button id="clear-tags-btn" style="font-size:11px;color:var(--text-muted);background:none;border:none;cursor:pointer;font-family:'DM Sans',sans-serif;padding:4px 0;">✕ Clear all filters</button></div>
+    </div>
+    <div id="results-header">
+      <div id="result-count">Loading…</div>
+      <button id="clear-btn">Clear all</button>
+    </div>
+    <div id="results-list">
+      <div id="empty"><div class="e-ico">🗺️</div><p>No businesses match your filters.<br>Try adjusting your search or tags.</p></div>
+    </div>
+  </div>
+  <div id="map"></div>
+  <div id="geocode-status"></div>
+  <div id="detail-panel">
+    <div id="detail-img-wrap">
+      <span id="detail-emoji">🌄</span>
+      <div id="detail-offer-img-badge">🎟️ 20% Off</div>
+      <button id="detail-close">✕</button>
+    </div>
+    <div id="detail-body">
+      <div id="detail-name"></div>
+      <div id="detail-tags"></div>
+      <div id="detail-desc"></div>
+      <div class="detail-row"><span class="dico">📍</span><span id="detail-addr"></span></div>
+      <div id="detail-offer-row">
+        <span style="font-size:18px">🎟️</span>
+        <div><div class="offer-label">Road Trip Pass Offer</div><div class="offer-sublabel" id="detail-offer-text"></div></div>
+      </div>
+      <a id="detail-link" href="#" target="_blank">🌐 Visit Website →</a>
+    </div>
+  </div>
+</div>
+<script>
+const MAPBOX_TOKEN = 'pk.eyJ1Ijoicm9hZGllMTIzNCIsImEiOiJjbW0yZ25oNzEwN3k1MnNwcnN5bWxoM3ptIn0.EjJEPhnVy_-lu1FfopPctg';
+const SHEET_CSV_DIRECT = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vR_V3UgDAhU_dTCObXDYzEGNXZ2jVzxXMEDpkkVSF3zfAA6uBVwanaUb9NQ9GSJ0p0vGzbQGdZJfRMb/pub?output=csv';
+const PROXIES = [
+  'https://api.allorigins.win/raw?url=' + encodeURIComponent(SHEET_CSV_DIRECT),
+  'https://corsproxy.io/?url=' + encodeURIComponent(SHEET_CSV_DIRECT),
+  'https://proxy.cors.sh/' + SHEET_CSV_DIRECT,
+];
+const TAG_GROUPS = {
+  'fg-water':['Kayaking','Canoeing','Rafting','Fishing','Snorkeling','SCUBA Diving','SUPing','Jet Boating','Jet Skiing','Float Trip','Dragon Boating','Whale Watching','Dolphin Viewing','Ocean Surfing','Freediving','Kite Surfing','Windsurfing','Surf Ski','Spearfishing','Skim Boarding','Wake Boarding'],
+  'fg-land':['Trekking','Rock Climbing','Mountain Biking','Cycling','Horse Riding','ATVing','Off-road','Caving','Via Ferrata','Zip Lining','Bungee','Aerial Park','Climbing Wall','Trails','Walking'],
+  'fg-snow':['Ski / Snowboarding','Snowmobiling','Heli Skiing','Cat Skiing','Ski / Board Touring','Hot Air Balloon','Helicopter','Airplane','Bi-Plane','Sky Diving / Parachuting'],
+  'fg-nature':['Wild Life Viewing','Bear Watching','Birds','Wolf Sanctuary','Nature Lover','Animnal Interaction','Camel Riding','Horses / Ponies'],
+  'fg-tours':['Guided','Self-Guided','Sightseeing','City Tours','Van Tours','Jeep Tours','Food Tour','Wine tours','Wine Tour','Overland Tours','Segway Tours','E-bike tours','Canopy Tours','Culture & Heritage','Destination Travel'],
+  'fg-who':['Family','Adult','Youth','Senior','Infant','Ladies Only','Group of 20+','Pet Friendly'],
+  'fg-duration':['1-2 Hours','Half Day','Full Day','Multi-Day','Week-long','Multi-Week','Month-long','Multi-month','Season-long'],
+  'fg-season':['Summer','Winter','Spring','Autumn','Evening/Night'],
+  'fg-level':['Beginner','Intermediate','Accomplished','Expert','First-timer','Leisurely','Thrills','Competitive'],
+  'fg-stay':['Accommodations Available','In-Camp Stay','Food Available','Rental','RV Turnaround','Indoor','Wellness','Training','Courses'],
+};
+Object.entries(TAG_GROUPS).forEach(([groupId, tags]) => {
+  const el = document.getElementById(groupId); if (!el) return;
+  tags.forEach(tag => { const btn = document.createElement('button'); btn.className = 'tag-btn'; btn.dataset.tag = tag; btn.textContent = tag; el.appendChild(btn); });
+});
+let ALL_BUSINESSES = [], activeTags = new Set(), offersOnly = false, searchQuery = '', selectedId = null, markers = {}, geocodeCache = {};
+mapboxgl.accessToken = MAPBOX_TOKEN;
+const map = new mapboxgl.Map({ container: 'map', style: 'mapbox://styles/mapbox/outdoors-v12', center: [-95, 45], zoom: 3.5 });
+map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
+map.addControl(new mapboxgl.GeolocateControl({ positionOptions: { enableHighAccuracy: true }, trackUserLocation: true }), 'bottom-right');
+function parseCSV(text) {
+  const lines = text.split('\n'); const headers = lines[0].split(',').map(h => h.trim().replace(/"/g,''));
+  const results = [];
+  for (let i = 1; i < lines.length; i++) {
+    if (!lines[i].trim()) continue;
+    const cols = []; let cur = '', inQ = false;
+    for (let c = 0; c < lines[i].length; c++) { const ch = lines[i][c]; if (ch==='"'){inQ=!inQ;} else if (ch===','&&!inQ){cols.push(cur);cur='';} else {cur+=ch;} }
+    cols.push(cur);
+    const obj = {}; headers.forEach((h,idx) => { obj[h]=(cols[idx]||'').trim(); });
+    if (!obj.name) continue;
+    results.push({ id:i, name:obj.name, address:obj.address||'', tags:obj.tags?obj.tags.split(',').map(t=>t.trim()).filter(Boolean):[], desc:obj.desc||'', url:obj.url||'', offer:obj.offer==='1', offer_text:obj.offer_text||'', lat:null, lng:null });
+  }
+  return results;
+}
+async function fetchWithFallback() {
+  for (let i = 0; i < PROXIES.length; i++) {
+    try {
+      document.querySelector('#loading-screen .l-sub').textContent = `Loading businesses… (attempt ${i+1})`;
+      const res = await fetch(PROXIES[i]); if (!res.ok) continue;
+      const text = await res.text(); if (text && text.includes('name')) return text;
+    } catch(e) { console.warn('Proxy failed:', PROXIES[i], e); }
+  }
+  return null;
+}
+async function geocodeAddress(address) {
+  if (!address||address==='None') return null; if (geocodeCache[address]) return geocodeCache[address];
+  try {
+    const res = await fetch(`https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(address)}.json?access_token=${MAPBOX_TOKEN}&limit=1`);
+    const data = await res.json();
+    if (data.features&&data.features.length>0) { const [lng,lat]=data.features[0].center; geocodeCache[address]={lat,lng}; return {lat,lng}; }
+  } catch(e) {}
+  return null;
+}
+async function geocodeAll(businesses) {
+  const statusEl = document.getElementById('geocode-status'); statusEl.classList.add('show'); let done = 0;
+  for (let i = 0; i < businesses.length; i += 8) {
+    await Promise.all(businesses.slice(i,i+8).map(async b => { const geo = await geocodeAddress(b.address); if (geo){b.lat=geo.lat;b.lng=geo.lng;} done++; }));
+    statusEl.textContent = `📍 Placing pins… ${done} / ${businesses.length}`; render();
+    await new Promise(r => setTimeout(r, 50));
+  }
+  statusEl.classList.remove('show'); render();
+}
+function getFiltered() {
+  return ALL_BUSINESSES.filter(b => {
+    if (offersOnly&&!b.offer) return false;
+    if (activeTags.size>0) { const bTags=new Set(b.tags.map(t=>t.trim())); for (const t of activeTags){if(!bTags.has(t))return false;} }
+    if (searchQuery) { const hay=(b.name+' '+b.address+' '+b.tags.join(' ')+' '+b.desc).toLowerCase(); if(!hay.includes(searchQuery))return false; }
+    return true;
+  });
+}
+function renderCards(filtered) {
+  const list = document.getElementById('results-list'); list.querySelectorAll('.biz-card').forEach(c=>c.remove());
+  const countEl = document.getElementById('result-count'), empty = document.getElementById('empty');
+  if (filtered.length===0) { empty.classList.add('show'); countEl.textContent='0 businesses'; return; }
+  empty.classList.remove('show'); countEl.textContent=`${filtered.length.toLocaleString()} business${filtered.length!==1?'es':''}`;
+  filtered.slice(0,150).forEach((b,i) => {
+    const card = document.createElement('div'); card.className='biz-card'+(b.id===selectedId?' selected':''); card.dataset.id=b.id; card.style.animationDelay=`${Math.min(i*0.02,0.3)}s`;
+    card.innerHTML=`<div class="card-name">${b.name}</div><div class="card-addr">📍 ${b.address}</div><div class="card-tags">${b.offer?'<span class="badge-pass">🎟️ 20% off</span>':''}${b.tags.slice(0,3).map(t=>`<span class="card-tag">${t}</span>`).join('')}</div>`;
+    card.addEventListener('click',()=>selectBusiness(b.id)); list.appendChild(card);
+  });
+  if (filtered.length>150) { const note=document.createElement('div'); note.style.cssText='text-align:center;padding:10px;font-size:11px;color:var(--text-muted)'; note.textContent=`+ ${(filtered.length-150).toLocaleString()} more — zoom in or filter to narrow`; list.appendChild(note); }
+}
+function renderMarkers(filtered) {
+  const filteredIds = new Set(filtered.map(b=>b.id));
+  ALL_BUSINESSES.forEach(b => {
+    if (!b.lat||!b.lng) return;
+    if (!markers[b.id]) { const el=document.createElement('div'); el.className='map-pin'+(b.offer?' offer':''); el.title=b.name; el.addEventListener('click',()=>selectBusiness(b.id)); markers[b.id]={marker:new mapboxgl.Marker({element:el,anchor:'center'}).setLngLat([b.lng,b.lat]).addTo(map),el}; }
+    markers[b.id].el.style.display=filteredIds.has(b.id)?'':'none';
+    markers[b.id].el.classList.toggle('selected',b.id===selectedId);
+  });
+}
+function render() { const f=getFiltered(); renderCards(f); renderMarkers(f); }
+function selectBusiness(id) {
+  selectedId=id; const b=ALL_BUSINESSES.find(x=>x.id===id); if(!b) return;
+  document.querySelectorAll('.biz-card').forEach(c=>c.classList.toggle('selected',parseInt(c.dataset.id)===id));
+  Object.keys(markers).forEach(mid=>markers[mid].el.classList.toggle('selected',parseInt(mid)===id));
+  if (b.lat&&b.lng) map.flyTo({center:[b.lng,b.lat],zoom:Math.max(map.getZoom(),10),speed:1.2});
+  document.getElementById('detail-name').textContent=b.name;
+  document.getElementById('detail-desc').textContent=b.desc;
+  document.getElementById('detail-addr').textContent=b.address;
+  document.getElementById('detail-link').href=b.url||'#';
+  document.getElementById('detail-tags').innerHTML=b.tags.slice(0,8).map(t=>`<span class="dp-tag">${t}</span>`).join('');
+  const offerRow=document.getElementById('detail-offer-row'),offerBadge=document.getElementById('detail-offer-img-badge');
+  if(b.offer){offerRow.style.display='flex';offerBadge.style.display='block';document.getElementById('detail-offer-text').textContent=b.offer_text||'20% off for Road Trip Pass holders';}
+  else{offerRow.style.display='none';offerBadge.style.display='none';}
+  document.getElementById('detail-panel').classList.add('open');
+  const card=document.querySelector(`.biz-card[data-id="${id}"]`); if(card)card.scrollIntoView({behavior:'smooth',block:'nearest'});
+}
+document.getElementById('detail-close').addEventListener('click',()=>{document.getElementById('detail-panel').classList.remove('open');selectedId=null;document.querySelectorAll('.biz-card').forEach(c=>c.classList.remove('selected'));Object.values(markers).forEach(m=>m.el.classList.remove('selected'));});
+document.getElementById('offers-toggle').addEventListener('click',()=>{offersOnly=!offersOnly;document.getElementById('offers-toggle').classList.toggle('active',offersOnly);render();});
+document.getElementById('search').addEventListener('input',e=>{searchQuery=e.target.value.toLowerCase().trim();render();});
+document.getElementById('filter-toggle-btn').addEventListener('click',()=>{const p=document.getElementById('filter-panel');p.classList.toggle('open');document.getElementById('filter-arrow').textContent=p.classList.contains('open')?'▲':'▼';});
+document.querySelectorAll('.tag-btn').forEach(btn=>{btn.addEventListener('click',()=>{const tag=btn.dataset.tag;if(activeTags.has(tag)){activeTags.delete(tag);btn.classList.remove('active');}else{activeTags.add(tag);btn.classList.add('active');}const c=activeTags.size;const el=document.getElementById('active-filter-count');el.textContent=c;el.classList.toggle('show',c>0);render();});});
+function clearAll(){searchQuery='';document.getElementById('search').value='';activeTags.clear();offersOnly=false;document.getElementById('offers-toggle').classList.remove('active');document.querySelectorAll('.tag-btn').forEach(b=>b.classList.remove('active'));const el=document.getElementById('active-filter-count');el.textContent='0';el.classList.remove('show');render();}
+document.getElementById('clear-btn').addEventListener('click',clearAll);
+document.getElementById('clear-tags-btn').addEventListener('click',clearAll);
+async function init() {
+  try {
+    document.getElementById('loading-bar').style.width='30%';
+    const text = await fetchWithFallback();
+    if (!text) throw new Error('All proxies failed');
+    document.getElementById('loading-bar').style.width='60%';
+    ALL_BUSINESSES=parseCSV(text);
+    document.getElementById('loading-bar').style.width='90%';
+    document.getElementById('offer-count').textContent=ALL_BUSINESSES.filter(b=>b.offer).length;
+    document.getElementById('loading-bar').style.width='100%';
+    setTimeout(()=>{document.getElementById('loading-screen').style.cssText='opacity:0;transition:opacity 0.4s';setTimeout(()=>document.getElementById('loading-screen').style.display='none',400);},300);
+    map.on('load',()=>{render();geocodeAll(ALL_BUSINESSES);});
+  } catch(e) {
+    document.querySelector('#loading-screen .l-sub').textContent='Error loading data — please refresh.';
+    console.error(e);
+  }
+}
+init();
+</script>
+</body>
+</html>
