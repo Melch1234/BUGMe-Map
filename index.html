@@ -100,13 +100,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 .card-tag{font-size:9px;font-weight:600;color:var(--green);background:var(--green-dim);border:1px solid rgba(90,138,60,0.2);padding:1px 5px;border-radius:5px;white-space:nowrap}
 
 /* HOVER POPUP */
-#hover-popup{position:fixed;background:var(--cream-light);border:1px solid var(--border2);border-radius:12px;padding:11px 14px;box-shadow:0 6px 20px rgba(0,0,0,0.15);z-index:150;pointer-events:none;display:none;max-width:230px;transform:translate(-50%,-115%)}
+#hover-popup{position:fixed;background:var(--cream-light);border:1px solid var(--border2);border-radius:12px;padding:13px 14px;box-shadow:0 6px 24px rgba(0,0,0,0.18);z-index:150;pointer-events:auto;display:none;width:230px;transform:translate(-50%,-112%)}
 #hover-popup.show{display:block}
+#hp-link:hover{opacity:0.85}
 .hp-arrow{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);width:12px;height:6px;overflow:hidden}
 .hp-arrow::after{content:'';position:absolute;width:8px;height:8px;background:var(--cream-light);border:1px solid var(--border2);transform:rotate(45deg);top:-4px;left:2px}
-.hp-name{font-size:12px;font-weight:700;color:var(--text);margin-bottom:3px}
-.hp-tags{font-size:10px;color:var(--text-muted)}
-.hp-offer{font-size:10px;font-weight:700;color:var(--teal);margin-top:4px;display:flex;align-items:center;gap:4px}
 
 /* DETAIL PANEL */
 #detail{position:fixed;right:0;top:0;bottom:0;width:380px;background:var(--cream-light);border-left:1px solid var(--border);z-index:110;display:none;flex-direction:column;box-shadow:-6px 0 24px rgba(0,0,0,0.1);overflow-y:auto}
@@ -141,7 +139,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 .pin.selected{transform:scale(1.7);box-shadow:0 0 0 3px white,0 3px 12px rgba(0,0,0,0.3);z-index:20}
 .pin.highlighted{transform:scale(1.5);box-shadow:0 0 0 2px var(--orange),0 3px 10px rgba(0,0,0,0.2);z-index:15}
 
-.mapboxgl-ctrl-bottom-right{bottom:20px!important;right:16px!important}
+.mapboxgl-ctrl-bottom-left{bottom:20px!important;left:16px!important}.mapboxgl-ctrl-bottom-right{bottom:20px!important;right:16px!important}
 .mapboxgl-ctrl-group{background:white!important;border:1px solid var(--border2)!important;box-shadow:0 1px 4px rgba(0,0,0,0.1)!important}
 
 @media(max-width:768px){
@@ -206,10 +204,15 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 
   <!-- HOVER POPUP -->
   <div id="hover-popup">
-    <div class="hp-name" id="hp-name"></div>
-    <div class="hp-tags" id="hp-tags"></div>
-    <div class="hp-offer" id="hp-offer" style="display:none">🎟️ Road Trip Pass Offer</div>
-    <div class="hp-arrow"><div></div></div>
+    <div id="hp-name" style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:4px;line-height:1.3"></div>
+    <div id="hp-addr" style="font-size:11px;color:var(--text-muted);margin-bottom:5px"></div>
+    <div id="hp-tags" style="font-size:10px;color:var(--text-muted);margin-bottom:6px"></div>
+    <div id="hp-offer" style="display:none;font-size:10px;font-weight:700;color:var(--teal);margin-bottom:7px">🎟️ Road Trip Pass Offer</div>
+    <div style="display:flex;gap:6px">
+      <a id="hp-link" href="#" target="_blank" rel="noopener" style="flex:1;background:var(--navy);color:white;text-decoration:none;text-align:center;padding:7px 6px;border-radius:7px;font-size:10px;font-weight:700;letter-spacing:.03em;text-transform:uppercase">🌐 Website ↗</a>
+      <button id="hp-detail-btn" style="flex:1;background:var(--cream-dark);color:var(--navy);border:1px solid var(--border2);border-radius:7px;padding:7px 6px;font-size:10px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif;letter-spacing:.03em;text-transform:uppercase">Full Info</button>
+    </div>
+    <div class="hp-arrow"></div>
   </div>
 
   <!-- ROUTE PLANNER PANEL -->
@@ -339,8 +342,8 @@ const map = new mapboxgl.Map({
   center: [-95, 45],
   zoom: 3.5
 });
-map.addControl(new mapboxgl.NavigationControl(), 'bottom-right');
-map.addControl(new mapboxgl.GeolocateControl({ positionOptions:{enableHighAccuracy:true}, trackUserLocation:true }), 'bottom-right');
+map.addControl(new mapboxgl.NavigationControl(), 'bottom-left');
+map.addControl(new mapboxgl.GeolocateControl({ positionOptions:{enableHighAccuracy:true}, trackUserLocation:true }), 'bottom-left');
 
 map.on('load', () => {
   document.getElementById('loading').style.display = 'none';
@@ -442,23 +445,30 @@ function renderMarkers(filtered) {
       el.addEventListener('mouseenter', e => {
         const popup = document.getElementById('hover-popup');
         document.getElementById('hp-name').textContent = b.name;
-        document.getElementById('hp-tags').textContent = b.tags.slice(0,3).join(' · ');
-        const offerEl = document.getElementById('hp-offer');
-        offerEl.style.display = b.offer ? 'flex' : 'none';
+        document.getElementById('hp-addr').textContent = b.address ? '📍 '+b.address : '';
+        document.getElementById('hp-tags').textContent = b.tags.slice(0,4).join(' · ');
+        document.getElementById('hp-offer').style.display = b.offer ? 'block' : 'none';
+        document.getElementById('hp-link').href = b.url || '#';
+        document.getElementById('hp-link').style.display = b.url ? 'block' : 'none';
+        document.getElementById('hp-detail-btn').onclick = () => { popup.classList.remove('show'); selectBiz(b.id); };
         const rect = el.getBoundingClientRect();
         popup.style.left = (rect.left + rect.width/2) + 'px';
         popup.style.top = rect.top + 'px';
         popup.classList.add('show');
-        // highlight card
         const card = document.querySelector('.card[data-id="'+b.id+'"]');
         if (card) card.classList.add('selected');
       });
       el.addEventListener('mouseleave', () => {
-        document.getElementById('hover-popup').classList.remove('show');
-        if (b.id !== selectedId) {
-          const card = document.querySelector('.card[data-id="'+b.id+'"]');
-          if (card) card.classList.remove('selected');
-        }
+        // Small delay so user can move mouse into popup without it disappearing
+        setTimeout(() => {
+          if (!document.getElementById('hover-popup').matches(':hover')) {
+            document.getElementById('hover-popup').classList.remove('show');
+            if (b.id !== selectedId) {
+              const card = document.querySelector('.card[data-id="'+b.id+'"]');
+              if (card) card.classList.remove('selected');
+            }
+          }
+        }, 120);
       });
       markers[b.id] = { m: new mapboxgl.Marker({element:el,anchor:'center'}).setLngLat([b.lng,b.lat]).addTo(map), el };
     }
@@ -508,13 +518,19 @@ function selectBiz(id) {
   if (card) card.scrollIntoView({behavior:'smooth',inline:'center'});
 }
 
+// Hide hover popup when mouse leaves it
+document.getElementById('hover-popup').addEventListener('mouseleave', () => {
+  document.getElementById('hover-popup').classList.remove('show');
+});
+
 // CONTROLS
 document.getElementById('detail-close').addEventListener('click', () => {
   document.getElementById('detail').classList.remove('open');
   selectedId=null;
   document.querySelectorAll('.card').forEach(c=>c.classList.remove('selected'));
   Object.values(markers).forEach(m=>m.el.classList.remove('selected'));
-  if (!isFiltering()) {
+  // Only zoom back to full map if not filtering and not in route planning mode
+  if (!isFiltering() && routeStops.length === 0) {
     map.flyTo({center:[-95,45],zoom:3.5,speed:1.2});
   }
 });
@@ -566,7 +582,7 @@ document.getElementById('clear-pill').addEventListener('click', clearAll);
 document.getElementById('clear-tags').addEventListener('click', clearAll);
 
 // ── ROUTE PLANNER
-let routeStops = []; // [{id, name, lat, lng}]
+let routeStops = [];
 let routeLayerAdded = false;
 
 document.getElementById('route-pill').addEventListener('click', e => {
@@ -582,9 +598,13 @@ document.getElementById('route-clear').addEventListener('click', clearRoute);
 document.getElementById('detail-add-stop').addEventListener('click', () => {
   const b = BUSINESSES.find(x => x.id === selectedId);
   if (!b || !b.lat || !b.lng) { alert('This business has not been placed on the map yet — try again in a moment.'); return; }
-  if (routeStops.find(s => s.id === b.id)) { alert('Already in route!'); return; }
+  if (routeStops.find(s => s.id === b.id)) { alert('Already in your route!'); return; }
   routeStops.push({id:b.id, name:b.name, lat:b.lat, lng:b.lng});
   updateRoutePlan();
+  // Close detail panel but stay zoomed in — don't fly back to full map
+  document.getElementById('detail').classList.remove('open');
+  Object.values(markers).forEach(m => m.el.classList.remove('selected'));
+  // Show route panel
   document.getElementById('route-panel').style.display = 'block';
   document.getElementById('route-pill').style.borderColor = 'var(--orange)';
   document.getElementById('route-pill').style.color = 'var(--orange)';
@@ -606,9 +626,14 @@ document.getElementById('detail-directions').addEventListener('click', () => {
   showDirectionLinks([{lat:userLat,lng:userLng},{lat:b.lat,lng:b.lng}], b.name);
 });
 
-function updateRoutePlan() {
+let legTimes = [];
+let dragSrcIdx = null;
+
+function updateRoutePlan(legData) {
+  if (legData) legTimes = legData;
   const stopsEl = document.getElementById('route-stops');
   stopsEl.innerHTML = '';
+
   if (routeStops.length === 0) {
     stopsEl.innerHTML = '<p style="font-size:12px;color:var(--text-dim);padding:8px 4px">Add businesses from their detail panel to build your route.</p>';
     document.getElementById('route-summary').style.display = 'none';
@@ -617,43 +642,81 @@ function updateRoutePlan() {
     document.getElementById('route-share').style.display = 'none';
     return;
   }
+
   routeStops.forEach((s, i) => {
     const div = document.createElement('div');
-    div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:6px 4px;border-bottom:1px solid var(--border)';
-    div.innerHTML = '<div style="width:20px;height:20px;border-radius:50%;background:var(--navy);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
-      +'<div style="flex:1;font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.name)+'</div>'
-      +'<button data-idx="'+i+'" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:14px;padding:2px 4px" class="remove-stop">✕</button>';
+    div.draggable = true;
+    div.dataset.idx = i;
+    div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:grab;border-radius:6px;transition:background .15s';
+    div.innerHTML =
+      '<div style="color:var(--text-dim);font-size:16px;cursor:grab;flex-shrink:0" title="Drag to reorder">⠿</div>'
+      +'<div style="width:22px;height:22px;border-radius:50%;background:var(--navy);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
+      +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.name)+'</div></div>'
+      +'<button data-idx="'+i+'" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:13px;padding:2px 4px;flex-shrink:0" class="remove-stop">✕</button>';
+
+    div.addEventListener('dragstart', e => { dragSrcIdx = i; div.style.opacity='0.4'; e.dataTransfer.effectAllowed='move'; });
+    div.addEventListener('dragend', () => { div.style.opacity='1'; });
+    div.addEventListener('dragover', e => { e.preventDefault(); div.style.background='rgba(30,58,95,0.06)'; });
+    div.addEventListener('dragleave', () => { div.style.background=''; });
+    div.addEventListener('drop', e => {
+      e.preventDefault(); div.style.background='';
+      if (dragSrcIdx===null||dragSrcIdx===i) return;
+      const moved = routeStops.splice(dragSrcIdx,1)[0];
+      routeStops.splice(i,0,moved);
+      dragSrcIdx=null; legTimes=[];
+      clearRouteMarkers();
+      updateRoutePlan();
+      if (routeStops.length>=2) drawRouteFromStops();
+      else updateRouteMarkers();
+    });
     stopsEl.appendChild(div);
+
+    // Leg time between stops
+    if (i < routeStops.length-1) {
+      const leg = legTimes[i];
+      const legDiv = document.createElement('div');
+      legDiv.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 4px 3px 38px;font-size:10px;color:var(--text-muted)';
+      if (leg) {
+        const km=(leg.distance/1000).toFixed(0);
+        const hrs=Math.floor(leg.duration/3600);
+        const mins=Math.floor((leg.duration%3600)/60);
+        legDiv.innerHTML = '↓ 🚗 '+(hrs>0?hrs+'h '+mins+'m':mins+' min')+' · '+km+' km';
+      } else {
+        legDiv.innerHTML = '↓ <span style="color:var(--text-dim)">calculating…</span>';
+      }
+      stopsEl.appendChild(legDiv);
+    }
   });
+
   stopsEl.querySelectorAll('.remove-stop').forEach(btn => {
     btn.addEventListener('click', () => {
-      routeStops.splice(parseInt(btn.dataset.idx), 1);
+      routeStops.splice(parseInt(btn.dataset.idx),1);
+      legTimes=[];
+      clearRouteMarkers();
       updateRoutePlan();
-      if (routeStops.length >= 2) drawRouteFromStops();
+      if (routeStops.length>=2) drawRouteFromStops();
       else clearRouteFromMap();
-      const sc = document.getElementById('stop-count');
-      if (routeStops.length === 0) { sc.style.display='none'; document.getElementById('route-pill').style.borderColor=''; document.getElementById('route-pill').style.color=''; }
-      else sc.textContent = routeStops.length;
+      const sc=document.getElementById('stop-count');
+      if (routeStops.length===0){sc.style.display='none';document.getElementById('route-pill').style.borderColor='';document.getElementById('route-pill').style.color='';}
+      else sc.textContent=routeStops.length;
     });
   });
-  if (routeStops.length >= 2) {
-    drawRouteFromStops();
-    document.getElementById('route-go-google').style.display = 'block';
-    document.getElementById('route-go-apple').style.display = 'block';
-    document.getElementById('route-share').style.display = 'block';
-    // Build Google Maps URL with waypoints
-    const coords = routeStops.map(s => s.lat+','+s.lng);
-    const origin = coords[0];
-    const dest = coords[coords.length-1];
-    const waypoints = coords.slice(1,-1).join('|');
-    const gUrl = 'https://www.google.com/maps/dir/?api=1&origin='+origin+'&destination='+dest+(waypoints?'&waypoints='+waypoints:'');
-    const aUrl = 'https://maps.apple.com/?saddr='+origin+'&daddr='+coords.slice(1).join('+to:');
-    document.getElementById('route-go-google').onclick = () => window.open(gUrl, '_blank');
-    document.getElementById('route-go-apple').onclick = () => window.open(aUrl, '_blank');
+
+  if (routeStops.length>=2) {
+    document.getElementById('route-go-google').style.display='block';
+    document.getElementById('route-go-apple').style.display='block';
+    document.getElementById('route-share').style.display='block';
+    const coords=routeStops.map(s=>s.lat+','+s.lng);
+    const origin=coords[0],dest=coords[coords.length-1];
+    const waypoints=coords.slice(1,-1).join('|');
+    const gUrl='https://www.google.com/maps/dir/?api=1&origin='+origin+'&destination='+dest+(waypoints?'&waypoints='+waypoints:'');
+    const aUrl='https://maps.apple.com/?saddr='+origin+'&daddr='+coords.slice(1).join('+to:');
+    document.getElementById('route-go-google').onclick=()=>window.open(gUrl,'_blank');
+    document.getElementById('route-go-apple').onclick=()=>window.open(aUrl,'_blank');
   } else {
-    document.getElementById('route-go-google').style.display = 'none';
-    document.getElementById('route-go-apple').style.display = 'none';
-    document.getElementById('route-share').style.display = 'none';
+    document.getElementById('route-go-google').style.display='none';
+    document.getElementById('route-go-apple').style.display='none';
+    document.getElementById('route-share').style.display='none';
     clearRouteFromMap();
   }
 }
@@ -665,34 +728,69 @@ async function drawRouteFromStops() {
 
 async function drawRoute(points) {
   if (points.length < 2) return;
+
+  // Show numbered markers immediately — don't wait for route calc
+  updateRouteMarkers();
+
+  // Show instant feedback
+  document.getElementById('route-summary').style.display='block';
+  document.getElementById('route-summary').innerHTML='🚗 Calculating route…';
+
+  // Fit map to stops immediately too
+  const lngs = points.map(p=>p.lng), lats = points.map(p=>p.lat);
+  map.fitBounds([[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]],{padding:100,duration:800});
+
   try {
     const coords = points.map(p => p.lng+','+p.lat).join(';');
-    const r = await fetch('https://api.mapbox.com/directions/v5/mapbox/driving/'+coords+'?access_token='+TOKEN+'&geometries=geojson&overview=full');
+
+    // Race against a 8 second timeout
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+
+    const r = await fetch(
+      'https://api.mapbox.com/directions/v5/mapbox/driving/'+coords+'?access_token='+TOKEN+'&geometries=geojson&overview=simplified',
+      { signal: controller.signal }
+    );
+    clearTimeout(timeout);
+
     const d = await r.json();
-    if (!d.routes || !d.routes.length) return;
+    if (!d.routes||!d.routes.length) return;
     const route = d.routes[0];
     const geojson = route.geometry;
-    const distKm = (route.distance/1000).toFixed(0);
-    const hrs = Math.floor(route.duration/3600);
-    const mins = Math.floor((route.duration%3600)/60);
-    const timeStr = hrs > 0 ? hrs+'h '+mins+'m' : mins+' min';
-    document.getElementById('route-summary').style.display = 'block';
-    document.getElementById('route-summary').innerHTML = '🚗 <strong>'+distKm+' km</strong> · <strong>'+timeStr+' drive</strong>';
-    // Draw on map
+
+    // Per-leg times
+    const newLegTimes = (route.legs||[]).map(leg=>({distance:leg.distance,duration:leg.duration}));
+
+    // Total summary
+    const distKm=(route.distance/1000).toFixed(0);
+    const hrs=Math.floor(route.duration/3600);
+    const mins=Math.floor((route.duration%3600)/60);
+    const timeStr=hrs>0?hrs+'h '+mins+'m':mins+' min';
+    document.getElementById('route-summary').style.display='block';
+    document.getElementById('route-summary').innerHTML='🚗 Total: <strong>'+distKm+' km</strong> · <strong>'+timeStr+'</strong>';
+
+    // Draw route line
     if (map.getSource('route')) {
       map.getSource('route').setData({type:'Feature',geometry:geojson});
     } else {
-      map.addSource('route', {type:'geojson',data:{type:'Feature',geometry:geojson}});
-      map.addLayer({id:'route-line',type:'line',source:'route',paint:{'line-color':'#1e3a5f','line-width':4,'line-opacity':0.85}});
-      map.addLayer({id:'route-line-bg',type:'line',source:'route',paint:{'line-color':'#ffffff','line-width':7,'line-opacity':0.4}},'route-line');
-      routeLayerAdded = true;
+      map.addSource('route',{type:'geojson',data:{type:'Feature',geometry:geojson}});
+      map.addLayer({id:'route-line-bg',type:'line',source:'route',paint:{'line-color':'#ffffff','line-width':7,'line-opacity':0.5}});
+      map.addLayer({id:'route-line',type:'line',source:'route',paint:{'line-color':'#1e3a5f','line-width':4,'line-opacity':0.9}});
+      routeLayerAdded=true;
     }
-    // Fit map to route
-    const allCoords = geojson.coordinates;
-    const lngs = allCoords.map(c=>c[0]);
-    const lats = allCoords.map(c=>c[1]);
-    map.fitBounds([[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]], {padding:80,duration:1000});
-  } catch(e) { console.error('Route error:', e); }
+
+    // Update leg times in panel
+    updateRoutePlan(newLegTimes);
+
+  } catch(e) {
+    if (e.name === 'AbortError') {
+      console.warn('Route timed out — showing markers only');
+      document.getElementById('route-summary').style.display='block';
+      document.getElementById('route-summary').innerHTML='🚗 Route drawn — times unavailable';
+    } else {
+      console.error('Route error:',e);
+    }
+  }
 }
 
 function showDirectionLinks(points, name) {
@@ -711,16 +809,57 @@ function showDirectionLinks(points, name) {
   document.getElementById('detail-link').after(div);
 }
 
+// Numbered route markers
+let routeMarkers = [];
+
+function updateRouteMarkers() {
+  // Remove old route markers
+  routeMarkers.forEach(m => m.remove());
+  routeMarkers = [];
+  if (routeStops.length === 0) return;
+
+  routeStops.forEach((s, i) => {
+    if (!s.lat || !s.lng) return;
+    const el = document.createElement('div');
+    el.style.cssText = 'width:28px;height:28px;border-radius:50%;background:var(--navy);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;font-family:DM Sans,sans-serif;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:pointer;z-index:20;transition:transform .15s';
+    el.style.setProperty('--navy', '#1e3a5f');
+    el.style.background = '#1e3a5f';
+    el.textContent = i + 1;
+    el.title = s.name;
+    el.addEventListener('click', () => selectBiz(s.id));
+    el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; el.style.boxShadow = '0 4px 14px rgba(30,58,95,0.5)'; });
+    el.addEventListener('mouseleave', () => { el.style.transform = ''; el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)'; });
+    const marker = new mapboxgl.Marker({element: el, anchor: 'center'})
+      .setLngLat([s.lng, s.lat])
+      .addTo(map);
+    routeMarkers.push(marker);
+    // Hide the regular pin for this stop
+    if (markers[s.id]) markers[s.id].el.style.display = 'none';
+  });
+}
+
+function clearRouteMarkers() {
+  routeMarkers.forEach(m => m.remove());
+  routeMarkers = [];
+  // Restore regular pins
+  routeStops.forEach(s => {
+    if (markers[s.id]) markers[s.id].el.style.display = '';
+  });
+}
+
 function clearRouteFromMap() {
   if (map.getLayer('route-line')) map.removeLayer('route-line');
   if (map.getLayer('route-line-bg')) map.removeLayer('route-line-bg');
   if (map.getSource('route')) map.removeSource('route');
   routeLayerAdded = false;
   document.getElementById('route-summary').style.display = 'none';
+  clearRouteMarkers();
 }
 
 function clearRoute() {
+  clearRouteMarkers();
   routeStops = [];
+  legTimes = [];
   clearRouteFromMap();
   updateRoutePlan();
   document.getElementById('stop-count').style.display = 'none';
