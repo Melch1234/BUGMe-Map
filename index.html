@@ -478,23 +478,76 @@ function renderMarkers(filtered) {
 }
 
 async function geocodeAll() {
-  const st = document.getElementById('geo-status'); st.classList.add('show');
-  let done = 0;
-  for (let i = 0; i < BUSINESSES.length; i += 8) {
-    await Promise.all(BUSINESSES.slice(i, i+8).map(async b => {
-      if (!b.address||b.address==='None'){done++;return;}
-      if (geoCache[b.address]){b.lat=geoCache[b.address].lat;b.lng=geoCache[b.address].lng;done++;return;}
+  const st = document.getElementById('geo-status');
+  st.classList.add('show');
+
+  // Load cached coords from localStorage
+  const CACHE_KEY = 'bugme_geocache_v2';
+  let savedCache = {};
+  try { savedCache = JSON.parse(localStorage.getItem(CACHE_KEY) || '{}'); } catch(e) {}
+
+  // Apply cached coords immediately — instant pins for cached addresses
+  let cachedCount = 0;
+  BUSINESSES.forEach(b => {
+    if (savedCache[b.address]) {
+      b.lat = savedCache[b.address].lat;
+      b.lng = savedCache[b.address].lng;
+      geoCache[b.address] = savedCache[b.address];
+      cachedCount++;
+    }
+  });
+
+  if (cachedCount > 0) {
+    st.textContent = '📍 '+cachedCount+' pins loaded from cache…';
+    renderMarkers(getFiltered());
+  }
+
+  // Find businesses still needing geocoding
+  const todo = BUSINESSES.filter(b => !b.lat && b.address && b.address !== 'None');
+
+  if (todo.length === 0) {
+    st.classList.remove('show');
+    return;
+  }
+
+  st.textContent = '📍 Loading '+todo.length+' new pins…';
+  let done = cachedCount;
+  let newlyCached = {};
+
+  for (let i = 0; i < todo.length; i += 8) {
+    await Promise.all(todo.slice(i, i+8).map(async b => {
       try {
         const r = await fetch('https://api.mapbox.com/geocoding/v5/mapbox.places/'+encodeURIComponent(b.address)+'.json?access_token='+TOKEN+'&limit=1');
         const d = await r.json();
-        if (d.features&&d.features.length){const [lng,lat]=d.features[0].center;b.lat=lat;b.lng=lng;geoCache[b.address]={lat,lng};}
+        if (d.features&&d.features.length) {
+          const [lng,lat] = d.features[0].center;
+          b.lat=lat; b.lng=lng;
+          geoCache[b.address]={lat,lng};
+          newlyCached[b.address]={lat,lng};
+        }
       } catch(e){}
       done++;
     }));
-    st.textContent = '📍 Placing pins… '+done+' / '+BUSINESSES.length;
+    st.textContent = '📍 Placing new pins… '+done+' / '+BUSINESSES.length;
     renderMarkers(getFiltered());
     await new Promise(r => setTimeout(r, 50));
+
+    // Save to localStorage every 100 businesses
+    if (i % 100 === 0 && Object.keys(newlyCached).length > 0) {
+      try {
+        const merged = {...savedCache, ...newlyCached};
+        localStorage.setItem(CACHE_KEY, JSON.stringify(merged));
+      } catch(e) {}
+    }
   }
+
+  // Final save
+  try {
+    const merged = {...savedCache, ...newlyCached};
+    localStorage.setItem(CACHE_KEY, JSON.stringify(merged));
+    console.log('Geocache saved: '+Object.keys(merged).length+' addresses');
+  } catch(e) {}
+
   st.classList.remove('show');
   renderMarkers(getFiltered());
 }
