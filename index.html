@@ -223,13 +223,31 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
     </div>
     <div id="route-stops" style="padding:10px 12px;max-height:240px;overflow-y:auto"></div>
     <div style="padding:10px 12px;border-top:1px solid var(--border)">
+      <!-- GROUP SIZE + SAVINGS -->
+      <div id="group-size-row" style="display:flex;align-items:center;gap:8px;margin-bottom:10px;padding:8px 10px;background:var(--cream-dark);border-radius:8px;border:1px solid var(--border)">
+        <span style="font-size:11px;font-weight:700;color:var(--navy);flex-shrink:0">👥 Group size:</span>
+        <div style="display:flex;align-items:center;gap:6px">
+          <button id="group-minus" style="width:22px;height:22px;border-radius:50%;background:var(--navy);color:white;border:none;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">−</button>
+          <span id="group-count" style="font-size:14px;font-weight:900;color:var(--navy);min-width:20px;text-align:center">2</span>
+          <button id="group-plus" style="width:22px;height:22px;border-radius:50%;background:var(--navy);color:white;border:none;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">+</button>
+        </div>
+      </div>
+      <!-- SAVINGS BOX -->
+      <div id="savings-box" style="display:none;margin-bottom:10px;background:linear-gradient(135deg,#1e3a5f,#2a9d8f);border-radius:10px;padding:12px 14px;color:white">
+        <div style="font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;opacity:.8;margin-bottom:4px">💰 Estimated Pass Savings</div>
+        <div id="savings-total" style="font-size:22px;font-weight:900;letter-spacing:-.02em;margin-bottom:2px">$0</div>
+        <div id="savings-detail" style="font-size:10px;opacity:.85;line-height:1.5"></div>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid rgba(255,255,255,0.25)">
+          <div style="font-size:10px;opacity:.7">Pass cost: <span style="text-decoration:line-through">$99</span> · Net savings after pass: <strong id="savings-net" style="color:#a8f0e8">calculating…</strong></div>
+        </div>
+      </div>
       <div id="route-summary" style="font-size:12px;color:var(--text-muted);margin-bottom:8px;display:none"></div>
       <div style="display:flex;gap:8px">
         <button id="route-go-google" style="display:none;flex:1;background:var(--navy);color:white;border:none;border-radius:8px;padding:9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🗺️ Google Maps</button>
         <button id="route-go-apple" style="display:none;flex:1;background:var(--navy-light);color:white;border:none;border-radius:8px;padding:9px;font-size:11px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🍎 Apple Maps</button>
       </div>
       <button id="route-share" style="display:none;width:100%;margin-top:6px;background:linear-gradient(135deg,var(--orange),var(--orange-bright));color:white;border:none;border-radius:8px;padding:9px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📸 Save & Share Route</button>
-      <button id="route-clear" style="width:100%;margin-top:6px;background:none;border:1px solid var(--border2);border-radius:8px;padding:7px;font-size:11px;color:var(--text-muted);cursor:pointer;font-family:'DM Sans',sans-serif">✕ Clear Route</button>
+      <button id="route-clear" style="width:100%;margin-top:6px;background:#fff0e8;border:1.5px solid #e87c2b;border-radius:8px;padding:8px;font-size:11px;font-weight:700;color:#c0460a;cursor:pointer;font-family:'DM Sans',sans-serif">🗑️ Clear All & Start Over</button>
     </div>
   </div>
 
@@ -648,6 +666,14 @@ document.getElementById('route-panel-close').addEventListener('click', () => {
 });
 document.getElementById('route-clear').addEventListener('click', clearRoute);
 
+// Group size controls
+document.getElementById('group-minus').addEventListener('click', () => {
+  if (groupSize > 1) { groupSize--; document.getElementById('group-count').textContent = groupSize; calcSavings(); }
+});
+document.getElementById('group-plus').addEventListener('click', () => {
+  if (groupSize < 50) { groupSize++; document.getElementById('group-count').textContent = groupSize; calcSavings(); }
+});
+
 document.getElementById('detail-add-stop').addEventListener('click', () => {
   const b = BUSINESSES.find(x => x.id === selectedId);
   if (!b || !b.lat || !b.lng) { alert('This business has not been placed on the map yet — try again in a moment.'); return; }
@@ -681,6 +707,68 @@ document.getElementById('detail-directions').addEventListener('click', () => {
 
 let legTimes = [];
 let dragSrcIdx = null;
+let groupSize = 2;
+const PASS_COST = 99;
+
+// Estimated avg price per person by activity type
+const PRICE_ESTIMATES = {
+  kayaking: 110, rafting: 140, fishing: 120, snorkeling: 95, surfing: 100,
+  sailing: 130, scuba: 160, paddleboarding: 75, canoeing: 90, tubing: 65,
+  skiing: 120, snowmobiling: 150, snowshoeing: 60, "hot air balloon": 250,
+  "dog sledding": 180, ziplining: 90, "rock climbing": 95, "mountain biking": 80,
+  trekking: 85, hiking: 60, atv: 110, horseback: 95, cycling: 70,
+  "wildlife viewing": 95, "bear watching": 120, "whale watching": 110,
+  "bird watching": 75, safari: 130, "guided tour": 95, "city tour": 65,
+  "wine tour": 85, "food tour": 75, "cultural tour": 70, "boat tour": 90,
+  "helicopter tour": 280, photography: 110, yoga: 60, meditation: 50,
+  glamping: 130, camping: 55, accommodations: 120,
+  default: 95
+};
+
+function estimatePricePerPerson(business) {
+  if (!business) return PRICE_ESTIMATES.default;
+  const tags = (business.tags || []).map(t => t.toLowerCase());
+  const name = (business.name || '').toLowerCase();
+  const combined = [...tags, name].join(' ');
+  for (const [key, price] of Object.entries(PRICE_ESTIMATES)) {
+    if (key !== 'default' && combined.includes(key)) return price;
+  }
+  return PRICE_ESTIMATES.default;
+}
+
+function calcSavings() {
+  const offerStops = routeStops.filter(s => {
+    const biz = BUSINESSES.find(b => b.id === s.id);
+    return biz && biz.offer;
+  });
+  if (offerStops.length === 0) {
+    document.getElementById('savings-box').style.display = 'none';
+    return;
+  }
+  let lines = [];
+  let total = 0;
+  offerStops.forEach(s => {
+    const biz = BUSINESSES.find(b => b.id === s.id);
+    const pricePerPerson = estimatePricePerPerson(biz);
+    const groupTotal = pricePerPerson * groupSize;
+    const saving = Math.round(groupTotal * 0.20);
+    total += saving;
+    lines.push(escHtml(biz.name.length > 28 ? biz.name.substring(0,28)+'…' : biz.name) + ' · ~$' + saving + ' off');
+  });
+  const net = total - PASS_COST;
+  const box = document.getElementById('savings-box');
+  box.style.display = 'block';
+  document.getElementById('savings-total').textContent = '$' + total.toLocaleString();
+  document.getElementById('savings-detail').innerHTML = lines.join('<br>') + '<br><span style="opacity:.6">Based on ' + groupSize + ' people × 20% off est. prices</span>';
+  const netEl = document.getElementById('savings-net');
+  if (net > 0) {
+    netEl.textContent = '$' + net.toLocaleString() + ' ahead 🎉';
+    netEl.style.color = '#a8f0e8';
+  } else {
+    netEl.textContent = 'add more stops to cover pass cost';
+    netEl.style.color = 'rgba(255,255,255,0.6)';
+  }
+}
 
 function updateRoutePlan(legData) {
   if (legData) legTimes = legData;
@@ -746,6 +834,7 @@ function updateRoutePlan(legData) {
       routeStops.splice(parseInt(btn.dataset.idx),1);
       legTimes=[];
       clearRouteMarkers();
+      calcSavings();
       updateRoutePlan();
       if (routeStops.length>=2) drawRouteFromStops();
       else clearRouteFromMap();
@@ -772,6 +861,7 @@ function updateRoutePlan(legData) {
     document.getElementById('route-share').style.display='none';
     clearRouteFromMap();
   }
+  calcSavings();
 }
 
 async function drawRouteFromStops() {
@@ -915,6 +1005,7 @@ function clearRoute() {
   legTimes = [];
   clearRouteFromMap();
   updateRoutePlan();
+  document.getElementById('savings-box').style.display = 'none';
   document.getElementById('stop-count').style.display = 'none';
   document.getElementById('route-pill').style.borderColor = '';
   document.getElementById('route-pill').style.color = '';
