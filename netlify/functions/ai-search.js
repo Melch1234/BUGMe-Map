@@ -38,12 +38,3 @@ exports.handler = async function(event) {
     return { statusCode: 500, body: JSON.stringify({ error: err.message }) };
   }
 };
-```
-
-Click **Commit changes** when done.
-
----
-
-**File 2** — click **Add file → Create new file** again, name it:
-```
-netlify.toml
