@@ -684,8 +684,64 @@ async function runAiSearch() {
   document.getElementById('ai-add-route').style.display = 'none';
 
   try {
-    // Build compact business list for AI — only geocoded ones for map pins, but include all for search
-    const bizContext = BUSINESSES.map(b =>
+    // Pre-filter businesses by query keywords before sending to AI
+    // This ensures relevant businesses are always included regardless of position in list
+    const qLower = query.toLowerCase();
+    const qWords = qLower.split(/\s+/).filter(w => w.length > 2);
+
+    // Activity synonyms for pre-filtering
+    const activityMap = {
+      'canyon': ['canyon','canyoning','canyoneering'],
+      'kayak': ['kayak','kayaking','canoe','canoeing','paddle','paddling'],
+      'raft': ['raft','rafting','whitewater'],
+      'fish': ['fish','fishing','angling','fly fishing'],
+      'hike': ['hike','hiking','trek','trekking','trail'],
+      'bike': ['bike','biking','cycling','mtb'],
+      'ski': ['ski','skiing','snowboard'],
+      'climb': ['climb','climbing','bouldering'],
+      'zip': ['zip','zipline','ziplining'],
+      'horse': ['horse','horseback','equestrian'],
+      'surf': ['surf','surfing'],
+      'atv': ['atv','quad','offroad'],
+      'wildlife': ['wildlife','whale','bear','bird'],
+      'tour': ['tour','guided','guide','sightseeing'],
+      'camp': ['camp','camping','glamping'],
+    };
+
+    // Expand query words with synonyms
+    let expandedQ = new Set(qWords);
+    qWords.forEach(w => {
+      Object.entries(activityMap).forEach(([key, vals]) => {
+        if (vals.some(v => v.includes(w) || w.includes(v))) {
+          vals.forEach(v => expandedQ.add(v));
+        }
+      });
+    });
+    const expandedTerms = Array.from(expandedQ);
+
+    // Score and filter businesses — include top matches + all offer businesses that match location
+    const scored = BUSINESSES.map(b => {
+      let score = 0;
+      const hay = (b.name + ' ' + (b.address||'') + ' ' + b.tags.join(' ')).toLowerCase();
+      expandedTerms.forEach(t => { if (hay.includes(t)) score += 2; });
+      qWords.forEach(w => { if (hay.includes(w)) score += 1; });
+      if (b.offer) score += 1;
+      return { b, score };
+    })
+    .filter(x => x.score > 0)
+    .sort((a, z) => z.score - a.score)
+    .slice(0, 120)
+    .map(x => x.b);
+
+    // Always include all offer businesses that have any term match
+    const offerMatches = BUSINESSES.filter(b => b.offer && !scored.find(s => s.id === b.id) && (() => {
+      const hay = (b.name + ' ' + (b.address||'') + ' ' + b.tags.join(' ')).toLowerCase();
+      return expandedTerms.some(t => hay.includes(t)) || qWords.some(w => hay.includes(w));
+    })());
+
+    const finalBizList = [...scored, ...offerMatches];
+
+    const bizContext = finalBizList.map(b =>
       `ID:${b.id}|${b.name}|${(b.address||'').split(',').slice(-3).join(',').trim()}|${b.tags.slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`
     ).join('\n');
 
