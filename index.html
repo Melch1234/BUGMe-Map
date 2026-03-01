@@ -42,8 +42,11 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 .topbar-divider{width:1px;height:28px;background:var(--border2);flex-shrink:0}
 
 /* SEARCH */
-#search-wrap{position:relative;flex:1;max-width:440px;display:flex;align-items:center;background:white;border:1.5px solid var(--border2);border-radius:24px;padding:0 8px 0 34px;box-shadow:0 1px 4px rgba(0,0,0,0.06);transition:border-color .2s}
+#search-wrap{position:relative;flex:1;max-width:520px;display:flex;align-items:center;background:white;border:1.5px solid var(--border2);border-radius:24px;padding:0 8px 0 12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);transition:border-color .2s;gap:4px}
 #search-wrap:focus-within{border-color:var(--orange);box-shadow:0 2px 8px rgba(232,124,43,0.15)}
+#search-location{flex:1;background:transparent;border:none;padding:9px 4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:80px}
+#search-activity{flex:1;background:transparent;border:none;padding:9px 4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:80px}
+.search-divider{width:1px;height:20px;background:var(--border2);flex-shrink:0}
 #search{flex:1;background:transparent;border:none;padding:9px 8px 9px 0;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:0}
 #search:focus{border-color:none;box-shadow:none}
 #ai-search-btn{background:linear-gradient(135deg,#1e3a5f,#2a4a7f);color:white;border:none;border-radius:16px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;flex-shrink:0;letter-spacing:.02em;transition:opacity .15s}
@@ -178,10 +181,12 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
     </div>
     <div class="topbar-divider"></div>
     <div id="search-wrap">
-  <span class="search-ico" id="search-ico">🔍</span>
-  <input id="search" type="text" placeholder="Search or ask AI… e.g. 'kayaking near Banff for my family'">
-  <button id="ai-search-btn" title="Ask AI">✨ Ask AI</button>
-  <div id="ai-spinner" style="display:none">⏳</div>
+  <span class="search-ico">📍</span>
+  <input id="search-location" type="text" placeholder="Where? e.g. Banff, Whistler, Golden BC…">
+  <div class="search-divider"></div>
+  <span class="search-ico">🎯</span>
+  <input id="search-activity" type="text" placeholder="What? e.g. kayaking, guided tour…">
+  <button id="ai-search-btn" title="Search">✨ Search</button>
 </div>
 <!-- AI RESULTS PANEL -->
 <div id="ai-panel" style="display:none;position:fixed;top:62px;left:50%;transform:translateX(-50%);width:520px;max-width:95vw;background:var(--cream-light);border:1px solid var(--border2);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18);z-index:200;overflow:hidden">
@@ -648,8 +653,15 @@ document.getElementById('offers-btn').addEventListener('click', () => {
   document.getElementById('clear-pill').classList.toggle('show', offersOnly||activeTags.size>0||searchQuery.length>0);
   render();
 });
-document.getElementById('search').addEventListener('input', e => {
+document.getElementById('search-location') && document.getElementById('search-location').addEventListener('input', e => {
   searchQuery=e.target.value.toLowerCase().trim();
+  document.getElementById('clear-pill').classList.toggle('show', offersOnly||activeTags.size>0||searchQuery.length>0);
+  render();
+});
+document.getElementById('search-activity') && document.getElementById('search-activity').addEventListener('input', e => {
+  const loc = document.getElementById('search-location').value.toLowerCase().trim();
+  const act = e.target.value.toLowerCase().trim();
+  searchQuery = [loc, act].filter(Boolean).join(' ');
   document.getElementById('clear-pill').classList.toggle('show', offersOnly||activeTags.size>0||searchQuery.length>0);
   render();
 });
@@ -666,13 +678,17 @@ document.getElementById('ai-panel-close').addEventListener('click', closeAiPanel
 
 // Trigger on button click or Enter key
 document.getElementById('ai-search-btn').addEventListener('click', runAiSearch);
-document.getElementById('search').addEventListener('keydown', e => {
-  if (e.key === 'Enter') runAiSearch();
-});
+document.getElementById('search-location').addEventListener('keydown', e => { if (e.key === 'Enter') runAiSearch(); });
+document.getElementById('search-activity').addEventListener('keydown', e => { if (e.key === 'Enter') runAiSearch(); });
 
 async function runAiSearch() {
-  const query = document.getElementById('search').value.trim();
-  if (!query) return;
+  const location = document.getElementById('search-location').value.trim();
+  const activity = document.getElementById('search-activity').value.trim();
+  if (!location && !activity) {
+    document.getElementById('search-location').focus();
+    return;
+  }
+  const query = [location, activity].filter(Boolean).join(' ');
 
   const btn = document.getElementById('ai-search-btn');
   btn.textContent = '✨ Thinking…';
@@ -687,7 +703,9 @@ async function runAiSearch() {
     // Pre-filter businesses by query keywords before sending to AI
     // This ensures relevant businesses are always included regardless of position in list
     const qLower = query.toLowerCase();
-    const qWords = qLower.split(/\s+/).filter(w => w.length > 2);
+    const qWords = qLower.split(/[^a-z]+/).filter(w => w.length > 2);
+    // Location words for geo filtering
+    const locationLower = (location || '').toLowerCase();
 
     // Activity synonyms for pre-filtering
     const activityMap = {
@@ -733,11 +751,19 @@ async function runAiSearch() {
     .slice(0, 120)
     .map(x => x.b);
 
+    // International-only businesses (not Canada/USA) — only show if query is international
+    const INTERNATIONAL_IDS = new Set([12, 17, 1293, 16]); // Kenya, Madagascar, Portugal, etc
+    const isInternationalQuery = ['africa','kenya','madagascar','portugal','europe','international','zambia'].some(k => qLow.includes(k));
+
     // Always include all offer businesses that have any term match
-    const offerMatches = BUSINESSES.filter(b => b.offer && !scored.find(s => s.id === b.id) && (() => {
+    const offerMatches = BUSINESSES.filter(b => {
+      if (!b.offer) return false;
+      if (scored.find(s => s.id === b.id)) return false;
+      // Block international businesses unless query is international
+      if (INTERNATIONAL_IDS.has(b.id) && !isInternationalQuery) return false;
       const hay = (b.name + ' ' + (b.address||'') + ' ' + b.tags.join(' ')).toLowerCase();
       return expandedTerms.some(t => hay.includes(t)) || qWords.some(w => hay.includes(w));
-    })());
+    });
 
     // Geographic filter — if query mentions a known Canadian place, exclude non-Canadian results
     const canadianKeywords = ['bc','alberta','ontario','quebec','manitoba','saskatchewan','yukon','canada',
@@ -748,8 +774,8 @@ async function runAiSearch() {
       'wyoming','utah','arizona','florida','texas','nevada','idaho','new mexico'];
 
     const qLow = query.toLowerCase();
-    const isCanadianQuery = canadianKeywords.some(k => qLow.includes(k));
-    const isUSQuery = usKeywords.some(k => qLow.includes(k));
+    const isCanadianQuery = canadianKeywords.some(k => locationLower.includes(k) || qLow.includes(k));
+    const isUSQuery = usKeywords.some(k => locationLower.includes(k) || qLow.includes(k));
 
     let finalBizList = [...scored, ...offerMatches];
 
@@ -775,16 +801,15 @@ async function runAiSearch() {
 
     const userLocStr = userLat ? `User location: lat ${userLat.toFixed(2)}, lng ${userLng.toFixed(2)}.` : '';
 
-    // Extract location from query for strict filtering
-    const locationMatch = query.match(/(?:in|near|around|at|lake)\s+([a-zA-Z\s]{2,25}?)(?:\s+for|\s+with|\s+and|$)/i);
-    const queryLocation = locationMatch ? locationMatch[1].trim() : null;
+    const queryLocation = location || null;
 
     const prompt = `You are a trip planning assistant for BUGMe.Travel — a road trip map with vetted adventure operators across Canada and USA.
 
 ${userLocStr} Group size: ${groupSize} people. Road Trip Pass = $99 flat, saves 20% at PASS_OFFER operators.
 
-USER QUERY: "${query}"
-${queryLocation ? `DETECTED LOCATION: "${queryLocation}" — you MUST only return operators whose address contains this location or is within 100km of it. Do NOT return operators from other countries or distant regions.` : ''}
+LOCATION: "${location || 'not specified'}"
+ACTIVITY: "${activity || 'anything'}"
+${queryLocation ? `STRICT RULE: ONLY return operators whose address is in or within ~100km of "${queryLocation}". Never return results from other countries or distant regions.` : ''}
 
 OPERATOR DATABASE (ID|Name|Location|Tags|PassOffer):
 ${bizContext.substring(0, 14000)}
