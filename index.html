@@ -42,9 +42,22 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 .topbar-divider{width:1px;height:28px;background:var(--border2);flex-shrink:0}
 
 /* SEARCH */
-#search-wrap{position:relative;flex:1;max-width:340px}
-#search{width:100%;background:white;border:1.5px solid var(--border2);border-radius:24px;padding:9px 16px 9px 34px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;transition:border-color .2s;box-shadow:0 1px 4px rgba(0,0,0,0.06)}
-#search:focus{border-color:var(--orange);box-shadow:0 2px 8px rgba(232,124,43,0.15)}
+#search-wrap{position:relative;flex:1;max-width:440px;display:flex;align-items:center;background:white;border:1.5px solid var(--border2);border-radius:24px;padding:0 8px 0 34px;box-shadow:0 1px 4px rgba(0,0,0,0.06);transition:border-color .2s}
+#search-wrap:focus-within{border-color:var(--orange);box-shadow:0 2px 8px rgba(232,124,43,0.15)}
+#search{flex:1;background:transparent;border:none;padding:9px 8px 9px 0;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:0}
+#search:focus{border-color:none;box-shadow:none}
+#ai-search-btn{background:linear-gradient(135deg,#1e3a5f,#2a4a7f);color:white;border:none;border-radius:16px;padding:6px 12px;font-size:11px;font-weight:800;cursor:pointer;font-family:'DM Sans',sans-serif;white-space:nowrap;flex-shrink:0;letter-spacing:.02em;transition:opacity .15s}
+#ai-search-btn:hover{opacity:.85}
+#ai-search-btn.loading{opacity:.6;pointer-events:none}
+#ai-spinner{display:none;font-size:13px;flex-shrink:0}
+.ai-biz-row{display:flex;align-items:center;gap:10px;padding:10px 16px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .15s}
+.ai-biz-row:hover{background:rgba(30,58,95,0.05)}
+.ai-biz-num{width:24px;height:24px;border-radius:50%;background:var(--navy);color:white;font-size:11px;font-weight:900;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.ai-biz-info{flex:1;min-width:0}
+.ai-biz-name{font-size:13px;font-weight:700;color:var(--navy);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ai-biz-meta{font-size:11px;color:var(--text-muted)}
+.ai-biz-offer{display:inline-block;background:var(--teal);color:white;font-size:9px;font-weight:800;padding:2px 6px;border-radius:8px;margin-left:6px}
+.ai-biz-saving{font-size:11px;color:var(--teal);font-weight:700;margin-top:2px}
 #search::placeholder{color:var(--text-dim)}
 .search-ico{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--text-dim);font-size:13px;pointer-events:none}
 
@@ -164,7 +177,28 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
       <div class="logo-text"><div class="lt1">Don't BugMe</div><div class="lt2">I'm On Vacation</div><div class="lt3">Road Trip Pass Map</div></div>
     </div>
     <div class="topbar-divider"></div>
-    <div id="search-wrap"><span class="search-ico">🔍</span><input id="search" type="text" placeholder="Search name, activity, location…"></div>
+    <div id="search-wrap">
+  <span class="search-ico" id="search-ico">🔍</span>
+  <input id="search" type="text" placeholder="Search or ask AI… e.g. 'kayaking near Banff for my family'">
+  <button id="ai-search-btn" title="Ask AI">✨ Ask AI</button>
+  <div id="ai-spinner" style="display:none">⏳</div>
+</div>
+<!-- AI RESULTS PANEL -->
+<div id="ai-panel" style="display:none;position:fixed;top:62px;left:50%;transform:translateX(-50%);width:520px;max-width:95vw;background:var(--cream-light);border:1px solid var(--border2);border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,0.18);z-index:200;overflow:hidden">
+  <div style="background:linear-gradient(135deg,var(--navy),#2a4a7f);padding:12px 16px;display:flex;align-items:center;justify-content:space-between">
+    <div style="display:flex;align-items:center;gap:8px">
+      <span style="font-size:16px">✨</span>
+      <span style="font-size:13px;font-weight:700;color:white">AI Trip Assistant</span>
+    </div>
+    <button id="ai-panel-close" style="background:none;border:none;color:rgba(255,255,255,.7);font-size:16px;cursor:pointer">✕</button>
+  </div>
+  <div id="ai-response" style="padding:14px 16px;font-size:13px;color:var(--text);line-height:1.6;max-height:220px;overflow-y:auto"></div>
+  <div id="ai-results-list" style="border-top:1px solid var(--border);max-height:260px;overflow-y:auto"></div>
+  <div style="padding:10px 16px;border-top:1px solid var(--border);display:flex;gap:8px">
+    <button id="ai-show-map" style="display:none;flex:1;background:var(--navy);color:white;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">📍 Show on Map</button>
+    <button id="ai-add-route" style="display:none;flex:1;background:var(--teal);color:white;border:none;border-radius:8px;padding:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:'DM Sans',sans-serif">🛣️ Add All to Route</button>
+  </div>
+</div>
     <button class="pill" id="filter-pill">🏷️ Filters <span id="afc"></span></button>
     <div id="offers-btn"><div class="ot-dot"></div><span>Pass Offers</span><div class="ot-count">27</div></div>
     <button id="route-pill" class="pill" style="color:var(--navy);border-color:var(--navy)">🛣️ Plan Route <span id="stop-count" style="display:none;background:var(--navy);color:white;border-radius:20px;padding:1px 6px;font-size:10px;font-weight:700;margin-left:2px"></span></button>
@@ -619,6 +653,188 @@ document.getElementById('search').addEventListener('input', e => {
   document.getElementById('clear-pill').classList.toggle('show', offersOnly||activeTags.size>0||searchQuery.length>0);
   render();
 });
+
+// ── AI SEARCH ────────────────────────────────────────────────────────────────
+let aiResults = []; // businesses returned by AI
+
+function closeAiPanel() {
+  document.getElementById('ai-panel').style.display = 'none';
+  aiResults = [];
+}
+
+document.getElementById('ai-panel-close').addEventListener('click', closeAiPanel);
+
+// Trigger on button click or Enter key
+document.getElementById('ai-search-btn').addEventListener('click', runAiSearch);
+document.getElementById('search').addEventListener('keydown', e => {
+  if (e.key === 'Enter') runAiSearch();
+});
+
+async function runAiSearch() {
+  const query = document.getElementById('search').value.trim();
+  if (!query) return;
+
+  const btn = document.getElementById('ai-search-btn');
+  btn.textContent = '✨ Thinking…';
+  btn.classList.add('loading');
+  document.getElementById('ai-panel').style.display = 'block';
+  document.getElementById('ai-response').innerHTML = '<span style="color:var(--text-muted)">Asking AI…</span>';
+  document.getElementById('ai-results-list').innerHTML = '';
+  document.getElementById('ai-show-map').style.display = 'none';
+  document.getElementById('ai-add-route').style.display = 'none';
+
+  try {
+    // Build compact business list for AI — only geocoded ones for map pins, but include all for search
+    const bizContext = BUSINESSES.map(b =>
+      `ID:${b.id}|${b.name}|${(b.address||'').split(',').slice(-3).join(',').trim()}|${b.tags.slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`
+    ).join('\n');
+
+    const userLocStr = userLat ? `User location: lat ${userLat.toFixed(2)}, lng ${userLng.toFixed(2)}.` : '';
+
+    const prompt = `You are a friendly trip planning assistant for BUGMe.Travel — a road trip map with ${BUSINESSES.length} vetted adventure operators across Canada and USA.
+
+${userLocStr} Group size: ${groupSize} people. Road Trip Pass = $99 flat, saves 20% at PASS_OFFER operators.
+
+USER QUERY: "${query}"
+
+OPERATOR DATABASE (ID|Name|Location|Tags|PassOffer):
+${bizContext.substring(0, 14000)}
+
+Instructions:
+- Find the 5-6 most relevant operators for this query
+- Think GEOGRAPHICALLY — if someone asks about a city or region, include operators in nearby towns within ~50km too (e.g. "Golden BC" should include operators in surrounding areas like Revelstoke, Radium, Banff corridor)
+- Match on activity type first, then location
+- Prioritize PASS_OFFER businesses when activity matches
+- NEVER return operators from a completely different region (e.g. don't return USA results for a Canadian city query)
+- If you can't find exact city matches, say so and suggest the nearest operators
+
+Reply ONLY in this exact JSON format with no markdown:
+{
+  "summary": "2-3 friendly sentences explaining what you found, mention savings if relevant",
+  "results": [
+    {"id": "EXACT_ID", "reason": "one short sentence why this matches", "savings": estimated_dollar_saving_per_person_times_group_or_0}
+  ]
+}`;
+
+    const response = await fetch('/.netlify/functions/ai-search', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ prompt })
+    });
+
+    if (!response.ok) throw new Error('Function error ' + response.status);
+
+    const data = await response.json();
+    const text = data.content?.[0]?.text || '';
+
+    let parsed;
+    try {
+      parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
+    } catch(e) {
+      throw new Error('Could not parse AI response');
+    }
+
+    aiResults = [];
+    (parsed.results || []).forEach(r => {
+      const biz = BUSINESSES.find(b => String(b.id) === String(r.id));
+      if (biz) aiResults.push({ biz, reason: r.reason, savings: r.savings || 0 });
+    });
+
+    document.getElementById('ai-response').innerHTML =
+      '<div style="line-height:1.65;color:var(--text)">✨ ' + escHtml(parsed.summary || 'Here are your results:') + '</div>';
+
+    const list = document.getElementById('ai-results-list');
+    list.innerHTML = '';
+
+    if (aiResults.length === 0) {
+      list.innerHTML = '<div style="padding:14px 16px;color:var(--text-muted);font-size:12px">No matches found. Try different keywords.</div>';
+    } else {
+      aiResults.forEach((r, i) => {
+        const row = document.createElement('div');
+        row.className = 'ai-biz-row';
+        row.innerHTML =
+          `<div class="ai-biz-num">${i+1}</div>`
+          +`<div class="ai-biz-info">`
+          +  `<div class="ai-biz-name">${escHtml(r.biz.name)}${r.biz.offer?'<span class="ai-biz-offer">🎟️ 20% off</span>':''}${!r.biz.lat?'<span style="font-size:9px;color:var(--text-muted);margin-left:5px">📍 loading…</span>':''}</div>`
+          +  `<div class="ai-biz-meta">${escHtml(r.biz.address||'')} · ${escHtml((r.biz.tags||[]).slice(0,3).join(', '))}</div>`
+          +  `<div class="ai-biz-meta" style="font-style:italic;margin-top:2px">${escHtml(r.reason)}</div>`
+          +  (r.savings > 0 ? `<div class="ai-biz-saving">~$${r.savings} savings for ${groupSize} people</div>` : '')
+          +`</div>`;
+        row.addEventListener('click', () => {
+          closeAiPanel();
+          if (r.biz.lat && r.biz.lng) {
+            selectBiz(r.biz.id);
+            map.flyTo({center:[r.biz.lng,r.biz.lat],zoom:12,duration:800});
+          } else if (r.biz.url) {
+            window.open(r.biz.url, '_blank');
+          }
+        });
+        list.appendChild(row);
+      });
+      document.getElementById('ai-show-map').style.display = 'block';
+      document.getElementById('ai-add-route').style.display = 'block';
+    }
+
+    document.getElementById('ai-show-map').onclick = () => {
+      closeAiPanel();
+      const lngs = aiResults.filter(r=>r.biz.lng).map(r=>r.biz.lng);
+      const lats = aiResults.filter(r=>r.biz.lat).map(r=>r.biz.lat);
+      if (lngs.length) map.fitBounds([[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]],{padding:120,duration:1000,maxZoom:10});
+      aiResults.forEach(r => {
+        const m = markers[r.biz.id];
+        if (m) { m.el.style.transform='scale(2)'; m.el.style.zIndex='50'; setTimeout(()=>{m.el.style.transform='';m.el.style.zIndex='';},2500); }
+      });
+    };
+
+    document.getElementById('ai-add-route').onclick = () => {
+      closeAiPanel();
+      aiResults.forEach(r => {
+        if (!routeStops.find(s=>s.id===r.biz.id) && r.biz.lat)
+          routeStops.push({id:r.biz.id,name:r.biz.name,lat:r.biz.lat,lng:r.biz.lng});
+      });
+      document.getElementById('route-panel').style.display='block';
+      const sc=document.getElementById('stop-count');
+      sc.textContent=routeStops.length; sc.style.display='flex';
+      document.getElementById('route-pill').style.borderColor='var(--navy)';
+      updateRoutePlan();
+      if (routeStops.length>=2) drawRouteFromStops();
+    };
+
+  } catch(err) {
+    console.error('AI search error:', err);
+    // Fall back to local search
+    runLocalSearch(query);
+  } finally {
+    btn.textContent = '✨ Ask AI';
+    btn.classList.remove('loading');
+  }
+}
+
+// Fallback local search if API unavailable
+function runLocalSearch(query) {
+  document.getElementById('ai-response').innerHTML =
+    '<div style="color:var(--text-muted);font-size:12px">⚡ Using quick search (AI unavailable)</div>';
+  const q = query.toLowerCase();
+  const words = q.split(/\s+/).filter(w => w.length > 2);
+  const results = BUSINESSES
+    .filter(b => {
+      const hay = (b.name+' '+(b.address||'')+' '+b.tags.join(' ')).toLowerCase();
+      return words.some(w => hay.includes(w));
+    })
+    .sort((a,b) => (b.offer?1:0)-(a.offer?1:0))
+    .slice(0,6);
+  aiResults = results.map(b => ({biz:b, reason:'Matches your search', savings: b.offer ? Math.round(estimatePricePerPerson(b)*groupSize*0.2) : 0}));
+  const list = document.getElementById('ai-results-list');
+  list.innerHTML = '';
+  aiResults.forEach((r,i) => {
+    const row = document.createElement('div');
+    row.className = 'ai-biz-row';
+    row.innerHTML = `<div class="ai-biz-num">${i+1}</div><div class="ai-biz-info"><div class="ai-biz-name">${escHtml(r.biz.name)}${r.biz.offer?'<span class="ai-biz-offer">🎟️ 20% off</span>':''}</div><div class="ai-biz-meta">${escHtml(r.biz.address||'')}</div></div>`;
+    row.addEventListener('click', () => { closeAiPanel(); if(r.biz.lat) { selectBiz(r.biz.id); map.flyTo({center:[r.biz.lng,r.biz.lat],zoom:12}); } });
+    list.appendChild(row);
+  });
+  if (aiResults.length > 0) { document.getElementById('ai-show-map').style.display='block'; document.getElementById('ai-add-route').style.display='block'; }
+}
 document.getElementById('filter-pill').addEventListener('click', e => {
   e.stopPropagation();
   const p=document.getElementById('filter-panel');
