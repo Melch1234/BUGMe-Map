@@ -44,8 +44,10 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 /* SEARCH */
 #search-wrap{position:relative;flex:1;max-width:520px;display:flex;align-items:center;background:white;border:1.5px solid var(--border2);border-radius:24px;padding:0 8px 0 12px;box-shadow:0 1px 4px rgba(0,0,0,0.06);transition:border-color .2s;gap:4px}
 #search-wrap:focus-within{border-color:var(--orange);box-shadow:0 2px 8px rgba(232,124,43,0.15)}
-#search-location{flex:1;background:transparent;border:none;padding:9px 4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:80px}
-#search-activity{flex:1;background:transparent;border:none;padding:9px 4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:80px}
+#search-location{flex:1;background:transparent;border:none;padding:9px 4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:80px;-webkit-appearance:none;appearance:none}
+#search-location::-webkit-search-cancel-button,#search-location::-webkit-search-decoration,#search-location::-webkit-search-results-button,#search-location::-webkit-search-results-decoration{display:none;-webkit-appearance:none}
+#search-activity{flex:1;background:transparent;border:none;padding:9px 4px;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:80px;-webkit-appearance:none;appearance:none}
+#search-location::-webkit-search-cancel-button,#search-location::-webkit-search-decoration,#search-activity::-webkit-search-cancel-button,#search-activity::-webkit-search-decoration{display:none}
 .search-divider{width:1px;height:20px;background:var(--border2);flex-shrink:0}
 #search{flex:1;background:transparent;border:none;padding:9px 8px 9px 0;color:var(--text);font-family:'DM Sans',sans-serif;font-size:13px;outline:none;min-width:0}
 #search:focus{border-color:none;box-shadow:none}
@@ -181,11 +183,9 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
     </div>
     <div class="topbar-divider"></div>
     <div id="search-wrap">
-  <span class="search-ico">📍</span>
-  <input id="search-location" type="text" placeholder="Where? e.g. Banff, Whistler, Golden BC…">
+  <input id="search-location" type="search" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Where? e.g. Banff, Whistler…">
   <div class="search-divider"></div>
-  <span class="search-ico">🎯</span>
-  <input id="search-activity" type="text" placeholder="What? e.g. kayaking, guided tour…">
+  <input id="search-activity" type="text" autocomplete="off" placeholder="What? e.g. kayaking, guided tour…">
   <button id="ai-search-btn" title="Search">✨ Search</button>
 </div>
 <!-- AI RESULTS PANEL -->
@@ -914,8 +914,8 @@ Reply ONLY in this exact JSON format, no markdown:
 
   } catch(err) {
     console.error('AI search error:', err);
-    // Fall back to local search
-    runLocalSearch(query);
+    document.getElementById('ai-response').innerHTML =
+      '<div style="color:#c0460a;font-size:12px">AI search error: ' + err.message + '</div>';
   } finally {
     btn.textContent = '✨ Ask AI';
     btn.classList.remove('loading');
