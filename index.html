@@ -739,7 +739,35 @@ async function runAiSearch() {
       return expandedTerms.some(t => hay.includes(t)) || qWords.some(w => hay.includes(w));
     })());
 
-    const finalBizList = [...scored, ...offerMatches];
+    // Geographic filter — if query mentions a known Canadian place, exclude non-Canadian results
+    const canadianKeywords = ['bc','alberta','ontario','quebec','manitoba','saskatchewan','yukon','canada',
+      'vancouver','victoria','calgary','edmonton','toronto','montreal','banff','jasper','whistler',
+      'canmore','kelowna','kamloops','revelstoke','golden','nelson','fernie','lake louise','tofino',
+      'ucluelet','squamish','pemberton','invermere','radium','kimberley','cranbrook'];
+    const usKeywords = ['usa','united states','colorado','california','oregon','washington','montana',
+      'wyoming','utah','arizona','florida','texas','nevada','idaho','new mexico'];
+
+    const qLow = query.toLowerCase();
+    const isCanadianQuery = canadianKeywords.some(k => qLow.includes(k));
+    const isUSQuery = usKeywords.some(k => qLow.includes(k));
+
+    let finalBizList = [...scored, ...offerMatches];
+
+    // Filter by country if location is clear
+    if (isCanadianQuery && !isUSQuery) {
+      const canadianFiltered = finalBizList.filter(b =>
+        (b.address||'').toLowerCase().includes('canada') ||
+        canadianKeywords.some(k => (b.address||'').toLowerCase().includes(k))
+      );
+      // Only apply filter if we still have results
+      if (canadianFiltered.length >= 2) finalBizList = canadianFiltered;
+    } else if (isUSQuery && !isCanadianQuery) {
+      const usFiltered = finalBizList.filter(b =>
+        !(b.address||'').toLowerCase().includes('canada') &&
+        !canadianKeywords.some(k => (b.address||'').toLowerCase().includes(k))
+      );
+      if (usFiltered.length >= 2) finalBizList = usFiltered;
+    }
 
     const bizContext = finalBizList.map(b =>
       `ID:${b.id}|${b.name}|${(b.address||'').split(',').slice(-3).join(',').trim()}|${b.tags.slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`
@@ -747,28 +775,31 @@ async function runAiSearch() {
 
     const userLocStr = userLat ? `User location: lat ${userLat.toFixed(2)}, lng ${userLng.toFixed(2)}.` : '';
 
-    const prompt = `You are a friendly trip planning assistant for BUGMe.Travel — a road trip map with ${BUSINESSES.length} vetted adventure operators across Canada and USA.
+    // Extract location from query for strict filtering
+    const locationMatch = query.match(/(?:in|near|around|at|lake)\s+([a-zA-Z\s]{2,25}?)(?:\s+for|\s+with|\s+and|$)/i);
+    const queryLocation = locationMatch ? locationMatch[1].trim() : null;
+
+    const prompt = `You are a trip planning assistant for BUGMe.Travel — a road trip map with vetted adventure operators across Canada and USA.
 
 ${userLocStr} Group size: ${groupSize} people. Road Trip Pass = $99 flat, saves 20% at PASS_OFFER operators.
 
 USER QUERY: "${query}"
+${queryLocation ? `DETECTED LOCATION: "${queryLocation}" — you MUST only return operators whose address contains this location or is within 100km of it. Do NOT return operators from other countries or distant regions.` : ''}
 
 OPERATOR DATABASE (ID|Name|Location|Tags|PassOffer):
 ${bizContext.substring(0, 14000)}
 
-Instructions:
-- Find the 5-6 most relevant operators for this query
-- Think GEOGRAPHICALLY — if someone asks about a city or region, include operators in nearby towns within ~50km too (e.g. "Golden BC" should include operators in surrounding areas like Revelstoke, Radium, Banff corridor)
-- Match on activity type first, then location
-- Prioritize PASS_OFFER businesses when activity matches
-- NEVER return operators from a completely different region (e.g. don't return USA results for a Canadian city query)
-- If you can't find exact city matches, say so and suggest the nearest operators
+STRICT RULES:
+1. LOCATION IS MANDATORY — if the query mentions a place, ONLY return operators near that place. Africa, Europe, USA results are FORBIDDEN if user asked about a Canadian location and vice versa.
+2. If fewer than 5 local results exist, say so honestly and only show what's nearby.
+3. Prioritize PASS_OFFER operators when activity matches.
+4. Match activity type keywords carefully — "shuttle" means transportation, not tours.
 
-Reply ONLY in this exact JSON format with no markdown:
+Reply ONLY in this exact JSON format, no markdown:
 {
-  "summary": "2-3 friendly sentences explaining what you found, mention savings if relevant",
+  "summary": "2-3 friendly sentences. If limited local results, say so honestly.",
   "results": [
-    {"id": "EXACT_ID", "reason": "one short sentence why this matches", "savings": estimated_dollar_saving_per_person_times_group_or_0}
+    {"id": "EXACT_ID", "reason": "one sentence why this matches the location and activity", "savings": 0}
   ]
 }`;
 
