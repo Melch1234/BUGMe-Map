@@ -404,7 +404,9 @@ map.addControl(new mapboxgl.GeolocateControl({ positionOptions:{enableHighAccura
 
 map.on('load', () => {
   document.getElementById('loading').style.display = 'none';
-  geocodeAll();
+  // All coords pre-baked into data — render instantly, no geocoding needed
+  renderMarkers(getFiltered());
+  render();
 });
 
 // Close filter panel when clicking map
@@ -614,245 +616,181 @@ document.getElementById('ai-search-btn').addEventListener('click', runAiSearch);
 document.getElementById('search-location').addEventListener('keydown', e => { if (e.key === 'Enter') runAiSearch(); });
 document.getElementById('search-activity').addEventListener('keydown', e => { if (e.key === 'Enter') runAiSearch(); });
 
-async function runAiSearch() {
-  const location = document.getElementById('search-location').value.trim();
-  const activity = document.getElementById('search-activity').value.trim();
-  if (!location && !activity) {
-    document.getElementById('search-location').focus();
-    return;
-  }
+function runAiSearch() {
+  const location = (document.getElementById('search-location').value || '').trim();
+  const activity = (document.getElementById('search-activity').value || '').trim();
+  if (!location && !activity) { document.getElementById('search-location').focus(); return; }
   const query = [location, activity].filter(Boolean).join(' ');
 
   const btn = document.getElementById('ai-search-btn');
-  btn.textContent = '✨ Thinking…';
+  btn.textContent = '✨ Searching…';
   btn.classList.add('loading');
   document.getElementById('ai-panel').style.display = 'block';
-  document.getElementById('ai-response').innerHTML = '<span style="color:var(--text-muted)">Asking AI…</span>';
+  document.getElementById('ai-response').innerHTML = '<span style="color:var(--text-muted)">Finding best matches…</span>';
   document.getElementById('ai-results-list').innerHTML = '';
   document.getElementById('ai-show-map').style.display = 'none';
   document.getElementById('ai-add-route').style.display = 'none';
 
-  try {
-    // Pre-filter businesses by query keywords before sending to AI
-    // This ensures relevant businesses are always included regardless of position in list
-    const qLower = query.toLowerCase();
-    const qWords = qLower.split(/[^a-z]+/).filter(w => w.length > 2);
-    // Location words for geo filtering
-    const locationLower = (location || '').toLowerCase();
+  const q = query.toLowerCase();
+  const locQ = location.toLowerCase();
+  const locWords = locQ.split(/[^a-zA-Z]+/).filter(w => w.length > 3);
+  const words = q.split(/[^a-zA-Z]+/).filter(w => w.length > 2);
 
-    // Activity synonyms for pre-filtering
-    const activityMap = {
-      'canyon': ['canyon','canyoning','canyoneering'],
-      'kayak': ['kayak','kayaking','canoe','canoeing','paddle','paddling'],
-      'raft': ['raft','rafting','whitewater'],
-      'fish': ['fish','fishing','angling','fly fishing'],
-      'hike': ['hike','hiking','trek','trekking','trail'],
-      'bike': ['bike','biking','cycling','mtb'],
-      'ski': ['ski','skiing','snowboard'],
-      'climb': ['climb','climbing','bouldering'],
-      'zip': ['zip','zipline','ziplining'],
-      'horse': ['horse','horseback','equestrian'],
-      'surf': ['surf','surfing'],
-      'atv': ['atv','quad','offroad'],
-      'wildlife': ['wildlife','whale','bear','bird'],
-      'tour': ['tour','guided','guide','sightseeing'],
-      'camp': ['camp','camping','glamping'],
-    };
+  // Synonym expansion
+  const synonyms = {
+    'raft':['rafting','whitewater','river float','river'],
+    'kayak':['kayaking','canoeing','canoe','paddle','paddling','sup'],
+    'canyon':['canyoning','canyoneering'],
+    'fish':['fishing','fly fishing','angling'],
+    'hike':['hiking','trekking','trail','walk'],
+    'bike':['biking','cycling','mountain bike','mtb'],
+    'ski':['skiing','snowboard','snowboarding'],
+    'climb':['climbing','bouldering','rock climb'],
+    'zip':['zipline','ziplining'],
+    'horse':['horseback','equestrian','riding'],
+    'tour':['tours','guided','sightseeing'],
+    'camp':['camping','glamping'],
+    'wildlife':['whale watching','bear watching','birding','wildlife'],
+    'shuttle':['shuttle','transport','transfer'],
+  };
+  const expanded = new Set(words);
+  words.forEach(w => {
+    Object.entries(synonyms).forEach(([k, vals]) => {
+      if (k.includes(w) || w.includes(k) || vals.some(v => v.includes(w) || w.includes(v))) {
+        vals.forEach(v => expanded.add(v));
+        expanded.add(k);
+      }
+    });
+  });
+  const terms = Array.from(expanded);
 
-    // Expand query words with synonyms
-    let expandedQ = new Set(qWords);
-    qWords.forEach(w => {
-      Object.entries(activityMap).forEach(([key, vals]) => {
-        if (vals.some(v => v.includes(w) || w.includes(v))) {
-          vals.forEach(v => expandedQ.add(v));
+  // Country detection from location field
+  const canadianPlaces = ['bc','alberta','ontario','quebec','canada','vancouver','victoria',
+    'calgary','edmonton','toronto','banff','jasper','whistler','canmore','kelowna','kamloops',
+    'revelstoke','golden','nelson','fernie','lake louise','tofino','squamish','pemberton',
+    'invermere','radium','kimberley','cranbrook','elko','blaeberry','peachland','osoyoos'];
+  const usPlaces = ['colorado','california','oregon','washington','montana','wyoming','utah',
+    'arizona','florida','texas','nevada','idaho','usa','united states'];
+  const intlPlaces = ['africa','kenya','madagascar','portugal','europe','zambia'];
+  const INTL_IDS = new Set([12, 17, 1293, 16]);
+
+  const isCanada = canadianPlaces.some(p => locQ.includes(p));
+  const isUSA = usPlaces.some(p => locQ.includes(p));
+  const isIntl = intlPlaces.some(p => q.includes(p));
+
+  // Score all businesses
+  const scored = BUSINESSES.map(b => {
+    let score = 0;
+    const addr = (b.address || '').toLowerCase();
+    const hay = (b.name + ' ' + addr + ' ' + b.tags.join(' ')).toLowerCase();
+
+    // Block international unless searched
+    if (INTL_IDS.has(b.id) && !isIntl) return { b, score: 0 };
+
+    // Country filter
+    if (isCanada) {
+      const inCanada = canadianPlaces.some(p => addr.includes(p)) || addr.includes('canada');
+      if (!inCanada) return { b, score: 0 };
+    } else if (isUSA) {
+      const inCanada = canadianPlaces.some(p => addr.includes(p)) || addr.includes('canada');
+      if (inCanada) return { b, score: 0 };
+    }
+
+    // Location match — highest priority
+    locWords.forEach(w => { if (addr.includes(w)) score += 15; });
+
+    // Activity/term match
+    terms.forEach(t => { if (hay.includes(t)) score += 3; });
+    words.forEach(w => { if (hay.includes(w)) score += 1; });
+
+    // Pass offer bonus
+    if (b.offer) score += 2;
+
+    return { b, score };
+  })
+  .filter(x => x.score > 0)
+  .sort((a, b) => b.score - a.score)
+  .slice(0, 8);
+
+  aiResults = scored.map(s => ({
+    biz: s.b,
+    reason: s.b.tags.filter(t => terms.some(term => t.toLowerCase().includes(term))).slice(0,3).join(', ') || (s.b.offer ? 'Road Trip Pass offer — 20% off' : 'Matches your search'),
+    savings: s.b.offer ? Math.round(estimatePricePerPerson(s.b) * groupSize * 0.20) : 0
+  }));
+
+  // Summary
+  const offerCount = aiResults.filter(r => r.biz.offer).length;
+  const totalSavings = aiResults.reduce((sum, r) => sum + r.savings, 0);
+  let summary = aiResults.length === 0
+    ? `No operators found near "${location}"${activity ? ' for ' + activity : ''}. Try a nearby city or broader activity.`
+    : `Found ${aiResults.length} operator${aiResults.length > 1 ? 's' : ''} near ${location}${activity ? ' for ' + activity : ''}.`
+      + (offerCount > 0 ? ` ${offerCount} have Road Trip Pass offers` : '')
+      + (totalSavings > 0 ? ` — group of ${groupSize} saves ~$${totalSavings} total.` : '.');
+
+  document.getElementById('ai-response').innerHTML =
+    '<div style="line-height:1.65;color:var(--text)">✨ ' + escHtml(summary) + '</div>';
+
+  const list = document.getElementById('ai-results-list');
+  list.innerHTML = '';
+  if (aiResults.length === 0) {
+    list.innerHTML = '<div style="padding:14px 16px;color:var(--text-muted);font-size:12px">Try: a nearby town, or leave activity blank to see everything in the area.</div>';
+  } else {
+    aiResults.forEach((r, i) => {
+      const row = document.createElement('div');
+      row.className = 'ai-biz-row';
+      row.innerHTML =
+        `<div class="ai-biz-num">${i+1}</div>`
+        +`<div class="ai-biz-info">`
+        +  `<div class="ai-biz-name">${escHtml(r.biz.name)}${r.biz.offer?'<span class="ai-biz-offer">🎟️ 20% off</span>':''}</div>`
+        +  `<div class="ai-biz-meta">${escHtml(r.biz.address||'')} · ${escHtml((r.biz.tags||[]).slice(0,3).join(', '))}</div>`
+        +  `<div class="ai-biz-meta" style="font-style:italic;margin-top:2px">${escHtml(r.reason)}</div>`
+        +  (r.savings>0?`<div class="ai-biz-saving">~$${r.savings} savings for ${groupSize} people</div>`:'')
+        +`</div>`;
+      row.addEventListener('click', () => {
+        closeAiPanel();
+        if (r.biz.lat && r.biz.lng) {
+          selectBiz(r.biz.id);
+          map.flyTo({center:[r.biz.lng,r.biz.lat],zoom:12,duration:800});
+        } else if (r.biz.url) {
+          window.open(r.biz.url, '_blank');
         }
       });
+      list.appendChild(row);
     });
-    const expandedTerms = Array.from(expandedQ);
-
-    // Score and filter businesses — include top matches + all offer businesses that match location
-    const scored = BUSINESSES.map(b => {
-      let score = 0;
-      const hay = (b.name + ' ' + (b.address||'') + ' ' + b.tags.join(' ')).toLowerCase();
-      expandedTerms.forEach(t => { if (hay.includes(t)) score += 2; });
-      qWords.forEach(w => { if (hay.includes(w)) score += 1; });
-      if (b.offer) score += 1;
-      return { b, score };
-    })
-    .filter(x => x.score > 0)
-    .sort((a, z) => z.score - a.score)
-    .slice(0, 120)
-    .map(x => x.b);
-
-    // International-only businesses (not Canada/USA) — only show if query is international
-    const INTERNATIONAL_IDS = new Set([12, 17, 1293, 16]); // Kenya, Madagascar, Portugal, etc
-    const isInternationalQuery = ['africa','kenya','madagascar','portugal','europe','international','zambia'].some(k => qLow.includes(k));
-
-    // Always include all offer businesses that have any term match
-    const offerMatches = BUSINESSES.filter(b => {
-      if (!b.offer) return false;
-      if (scored.find(s => s.id === b.id)) return false;
-      // Block international businesses unless query is international
-      if (INTERNATIONAL_IDS.has(b.id) && !isInternationalQuery) return false;
-      const hay = (b.name + ' ' + (b.address||'') + ' ' + b.tags.join(' ')).toLowerCase();
-      return expandedTerms.some(t => hay.includes(t)) || qWords.some(w => hay.includes(w));
-    });
-
-    // Geographic filter — if query mentions a known Canadian place, exclude non-Canadian results
-    const canadianKeywords = ['bc','alberta','ontario','quebec','manitoba','saskatchewan','yukon','canada',
-      'vancouver','victoria','calgary','edmonton','toronto','montreal','banff','jasper','whistler',
-      'canmore','kelowna','kamloops','revelstoke','golden','nelson','fernie','lake louise','tofino',
-      'ucluelet','squamish','pemberton','invermere','radium','kimberley','cranbrook'];
-    const usKeywords = ['usa','united states','colorado','california','oregon','washington','montana',
-      'wyoming','utah','arizona','florida','texas','nevada','idaho','new mexico'];
-
-    const qLow = query.toLowerCase();
-    const isCanadianQuery = canadianKeywords.some(k => locationLower.includes(k) || qLow.includes(k));
-    const isUSQuery = usKeywords.some(k => locationLower.includes(k) || qLow.includes(k));
-
-    let finalBizList = [...scored, ...offerMatches];
-
-    // Filter by country if location is clear
-    if (isCanadianQuery && !isUSQuery) {
-      const canadianFiltered = finalBizList.filter(b =>
-        (b.address||'').toLowerCase().includes('canada') ||
-        canadianKeywords.some(k => (b.address||'').toLowerCase().includes(k))
-      );
-      // Only apply filter if we still have results
-      if (canadianFiltered.length >= 2) finalBizList = canadianFiltered;
-    } else if (isUSQuery && !isCanadianQuery) {
-      const usFiltered = finalBizList.filter(b =>
-        !(b.address||'').toLowerCase().includes('canada') &&
-        !canadianKeywords.some(k => (b.address||'').toLowerCase().includes(k))
-      );
-      if (usFiltered.length >= 2) finalBizList = usFiltered;
-    }
-
-    const bizContext = finalBizList.map(b =>
-      `ID:${b.id}|${b.name}|${(b.address||'').split(',').slice(-3).join(',').trim()}|${b.tags.slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`
-    ).join('\n');
-
-    const userLocStr = userLat ? `User location: lat ${userLat.toFixed(2)}, lng ${userLng.toFixed(2)}.` : '';
-
-    const queryLocation = location || null;
-
-    const prompt = `You are a trip planning assistant for BUGMe.Travel — a road trip map with vetted adventure operators across Canada and USA.
-
-${userLocStr} Group size: ${groupSize} people. Road Trip Pass = $99 flat, saves 20% at PASS_OFFER operators.
-
-LOCATION: "${location || 'not specified'}"
-ACTIVITY: "${activity || 'anything'}"
-${queryLocation ? `STRICT RULE: ONLY return operators whose address is in or within ~100km of "${queryLocation}". Never return results from other countries or distant regions.` : ''}
-
-OPERATOR DATABASE (ID|Name|Location|Tags|PassOffer):
-${bizContext.substring(0, 14000)}
-
-STRICT RULES:
-1. LOCATION IS MANDATORY — if the query mentions a place, ONLY return operators near that place. Africa, Europe, USA results are FORBIDDEN if user asked about a Canadian location and vice versa.
-2. If fewer than 5 local results exist, say so honestly and only show what's nearby.
-3. Prioritize PASS_OFFER operators when activity matches.
-4. Match activity type keywords carefully — "shuttle" means transportation, not tours.
-
-Reply ONLY in this exact JSON format, no markdown:
-{
-  "summary": "2-3 friendly sentences. If limited local results, say so honestly.",
-  "results": [
-    {"id": "EXACT_ID", "reason": "one sentence why this matches the location and activity", "savings": 0}
-  ]
-}`;
-
-    const response = await fetch('/.netlify/functions/ai-search', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ prompt })
-    });
-
-    if (!response.ok) throw new Error('Function error ' + response.status);
-
-    const data = await response.json();
-    const text = data.content?.[0]?.text || '';
-
-    let parsed;
-    try {
-      parsed = JSON.parse(text.replace(/```json|```/g, '').trim());
-    } catch(e) {
-      throw new Error('Could not parse AI response');
-    }
-
-    aiResults = [];
-    (parsed.results || []).forEach(r => {
-      const biz = BUSINESSES.find(b => String(b.id) === String(r.id));
-      if (biz) aiResults.push({ biz, reason: r.reason, savings: r.savings || 0 });
-    });
-
-    document.getElementById('ai-response').innerHTML =
-      '<div style="line-height:1.65;color:var(--text)">✨ ' + escHtml(parsed.summary || 'Here are your results:') + '</div>';
-
-    const list = document.getElementById('ai-results-list');
-    list.innerHTML = '';
-
-    if (aiResults.length === 0) {
-      list.innerHTML = '<div style="padding:14px 16px;color:var(--text-muted);font-size:12px">No matches found. Try different keywords.</div>';
-    } else {
-      aiResults.forEach((r, i) => {
-        const row = document.createElement('div');
-        row.className = 'ai-biz-row';
-        row.innerHTML =
-          `<div class="ai-biz-num">${i+1}</div>`
-          +`<div class="ai-biz-info">`
-          +  `<div class="ai-biz-name">${escHtml(r.biz.name)}${r.biz.offer?'<span class="ai-biz-offer">🎟️ 20% off</span>':''}${!r.biz.lat?'<span style="font-size:9px;color:var(--text-muted);margin-left:5px">📍 loading…</span>':''}</div>`
-          +  `<div class="ai-biz-meta">${escHtml(r.biz.address||'')} · ${escHtml((r.biz.tags||[]).slice(0,3).join(', '))}</div>`
-          +  `<div class="ai-biz-meta" style="font-style:italic;margin-top:2px">${escHtml(r.reason)}</div>`
-          +  (r.savings > 0 ? `<div class="ai-biz-saving">~$${r.savings} savings for ${groupSize} people</div>` : '')
-          +`</div>`;
-        row.addEventListener('click', () => {
-          closeAiPanel();
-          if (r.biz.lat && r.biz.lng) {
-            selectBiz(r.biz.id);
-            map.flyTo({center:[r.biz.lng,r.biz.lat],zoom:12,duration:800});
-          } else if (r.biz.url) {
-            window.open(r.biz.url, '_blank');
-          }
-        });
-        list.appendChild(row);
-      });
-      document.getElementById('ai-show-map').style.display = 'block';
-      document.getElementById('ai-add-route').style.display = 'block';
-    }
-
-    document.getElementById('ai-show-map').onclick = () => {
-      closeAiPanel();
-      const lngs = aiResults.filter(r=>r.biz.lng).map(r=>r.biz.lng);
-      const lats = aiResults.filter(r=>r.biz.lat).map(r=>r.biz.lat);
-      if (lngs.length) map.fitBounds([[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]],{padding:120,duration:1000,maxZoom:10});
-      aiResults.forEach(r => {
-        const m = markers[r.biz.id];
-        if (m) { m.el.style.transform='scale(2)'; m.el.style.zIndex='50'; setTimeout(()=>{m.el.style.transform='';m.el.style.zIndex='';},2500); }
-      });
-    };
-
-    document.getElementById('ai-add-route').onclick = () => {
-      closeAiPanel();
-      aiResults.forEach(r => {
-        if (!routeStops.find(s=>s.id===r.biz.id) && r.biz.lat)
-          routeStops.push({id:r.biz.id,name:r.biz.name,lat:r.biz.lat,lng:r.biz.lng});
-      });
-      document.getElementById('route-panel').style.display='block';
-      const sc=document.getElementById('stop-count');
-      sc.textContent=routeStops.length; sc.style.display='flex';
-      document.getElementById('route-pill').style.borderColor='var(--navy)';
-      updateRoutePlan();
-      if (routeStops.length>=2) drawRouteFromStops();
-    };
-
-  } catch(err) {
-    console.error('AI search error:', err);
-    document.getElementById('ai-response').innerHTML =
-      '<div style="color:#c0460a;font-size:12px">AI search error: ' + err.message + '</div>';
-  } finally {
-    btn.textContent = '✨ Ask AI';
-    btn.classList.remove('loading');
+    document.getElementById('ai-show-map').style.display = 'block';
+    document.getElementById('ai-add-route').style.display = 'block';
   }
+
+  document.getElementById('ai-show-map').onclick = () => {
+    closeAiPanel();
+    const lngs = aiResults.filter(r=>r.biz.lng).map(r=>r.biz.lng);
+    const lats = aiResults.filter(r=>r.biz.lat).map(r=>r.biz.lat);
+    if (lngs.length) map.fitBounds(
+      [[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]],
+      {padding:120,duration:1000,maxZoom:10}
+    );
+    aiResults.forEach(r => {
+      const m = markers[r.biz.id];
+      if (m) { m.el.style.transform='scale(2)'; m.el.style.zIndex='50'; setTimeout(()=>{m.el.style.transform='';m.el.style.zIndex='';},2500); }
+    });
+  };
+
+  document.getElementById('ai-add-route').onclick = () => {
+    closeAiPanel();
+    aiResults.forEach(r => {
+      if (!routeStops.find(s=>s.id===r.biz.id) && r.biz.lat)
+        routeStops.push({id:r.biz.id, name:r.biz.name, lat:r.biz.lat, lng:r.biz.lng});
+    });
+    document.getElementById('route-panel').style.display='block';
+    const sc=document.getElementById('stop-count');
+    sc.textContent=routeStops.length; sc.style.display='flex';
+    document.getElementById('route-pill').style.borderColor='var(--navy)';
+    updateRoutePlan();
+    if (routeStops.length>=2) drawRouteFromStops();
+  };
+
+  btn.textContent = '✨ Search';
+  btn.classList.remove('loading');
 }
 
 // Fallback local search if API unavailable
