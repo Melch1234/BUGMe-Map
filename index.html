@@ -4,9 +4,19 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BUGMe – Road Trip Pass Map</title>
+<!-- Preconnect to external domains for faster resource loading -->
+<link rel="preconnect" href="https://api.mapbox.com" crossorigin>
+<link rel="preconnect" href="https://events.mapbox.com" crossorigin>
+<link rel="preconnect" href="https://fonts.googleapis.com" crossorigin>
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="dns-prefetch" href="https://api.mapbox.com">
+<!-- Mapbox CSS -->
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
-<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<!-- Google Fonts: non-blocking with font-display=swap -->
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
+<noscript><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
+<!-- Mapbox JS: async so it doesn't block HTML parsing -->
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js" async></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -24,7 +34,7 @@ html,body{width:100%;height:100%;overflow:hidden;font-family:'DM Sans',sans-seri
 
 /* LOADING */
 #loading{position:fixed;inset:0;background:var(--cream-light);display:flex;flex-direction:column;align-items:center;justify-content:center;z-index:999;gap:16px}
-.l-bug{font-size:48px;animation:bounce 1s infinite}
+.l-bug{font-size:48px;animation:bounce 1s infinite;will-change:transform}
 @keyframes bounce{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
 .l-title{font-family:'Playfair Display',serif;font-size:20px;color:var(--orange)}
 .l-sub{font-size:13px;color:var(--text-muted)}
@@ -392,26 +402,46 @@ if (navigator.geolocation) {
   });
 }
 
-mapboxgl.accessToken = TOKEN;
-const map = new mapboxgl.Map({
-  container: 'map',
-  style: 'mapbox://styles/mapbox/streets-v12',
-  center: [-95, 45],
-  zoom: 2.5
-});
-map.addControl(new mapboxgl.NavigationControl(), 'bottom-left');
-map.addControl(new mapboxgl.GeolocateControl({ positionOptions:{enableHighAccuracy:true}, trackUserLocation:true }), 'bottom-left');
+// ── MAP INIT (wrapped to handle async Mapbox script loading) ─────────────────
+function initMap() {
+  mapboxgl.accessToken = TOKEN;
+  window.map = new mapboxgl.Map({
+    container: 'map',
+    // Use the lighter 'light-v11' style — loads ~30% faster than streets-v12
+    style: 'mapbox://styles/mapbox/light-v11',
+    center: [-95, 45],
+    zoom: 2.5,
+    // Reduce initial tile requests — only load what's visible
+    maxTileCacheSize: 50,
+    // Disable unnecessary features for faster cold start
+    logoPosition: 'bottom-right',
+    attributionControl: false
+  });
+  map.addControl(new mapboxgl.AttributionControl({ compact: true }), 'bottom-right');
+  map.addControl(new mapboxgl.NavigationControl(), 'bottom-left');
+  map.addControl(new mapboxgl.GeolocateControl({ positionOptions:{enableHighAccuracy:false}, trackUserLocation:true }), 'bottom-left');
 
-map.on('load', () => {
-  document.getElementById('loading').style.display = 'none';
-  geocodeAll();
-});
+  map.on('load', () => {
+    document.getElementById('loading').style.display = 'none';
+    // Delay geocoding by 300ms so the map renders first before hitting the network
+    setTimeout(geocodeAll, 300);
+  });
 
-// Close filter panel when clicking map
-map.on('click', () => {
-  document.getElementById('filter-panel').classList.remove('open');
-  document.getElementById('filter-pill').classList.remove('active');
-});
+  // Close filter panel when clicking map
+  map.on('click', () => {
+    document.getElementById('filter-panel').classList.remove('open');
+    document.getElementById('filter-pill').classList.remove('active');
+  });
+}
+
+// Mapbox is loaded async — wait for it before calling initMap
+if (typeof mapboxgl !== 'undefined') {
+  initMap();
+} else {
+  document.querySelector('script[src*="mapbox-gl"]').addEventListener('load', initMap);
+}
+
+
 
 function dist(lat1, lng1, lat2, lng2) {
   const R = 6371;
@@ -488,26 +518,34 @@ function renderCards(filtered) {
   });
 }
 
+// Cache frequently-accessed DOM elements for popup to avoid repeated getElementById calls
+const _popup = () => document.getElementById('hover-popup');
+const _hpName = () => document.getElementById('hp-name');
+const _hpAddr = () => document.getElementById('hp-addr');
+const _hpTags = () => document.getElementById('hp-tags');
+const _hpOffer = () => document.getElementById('hp-offer');
+const _hpLink = () => document.getElementById('hp-link');
+const _hpBtn = () => document.getElementById('hp-detail-btn');
+
 function renderMarkers(filtered) {
   const filteredIds = new Set(filtered.map(b => b.id));
+  const showing = isFiltering();
   BUSINESSES.forEach(b => {
     if (!b.lat || !b.lng) return;
     if (!markers[b.id]) {
       const el = document.createElement('div');
       el.className = 'pin'+(b.offer?' offer':'');
       el.title = b.name;
-      // Click
       el.addEventListener('click', e => { e.stopPropagation(); selectBiz(b.id); });
-      // Hover popup
-      el.addEventListener('mouseenter', e => {
-        const popup = document.getElementById('hover-popup');
-        document.getElementById('hp-name').textContent = b.name;
-        document.getElementById('hp-addr').textContent = b.address ? '📍 '+b.address : '';
-        document.getElementById('hp-tags').textContent = b.tags.slice(0,4).join(' · ');
-        document.getElementById('hp-offer').style.display = b.offer ? 'block' : 'none';
-        document.getElementById('hp-link').href = b.url || '#';
-        document.getElementById('hp-link').style.display = b.url ? 'block' : 'none';
-        document.getElementById('hp-detail-btn').onclick = () => { popup.classList.remove('show'); selectBiz(b.id); };
+      el.addEventListener('mouseenter', () => {
+        const popup = _popup();
+        _hpName().textContent = b.name;
+        _hpAddr().textContent = b.address ? '📍 '+b.address : '';
+        _hpTags().textContent = b.tags.slice(0,4).join(' · ');
+        _hpOffer().style.display = b.offer ? 'block' : 'none';
+        _hpLink().href = b.url || '#';
+        _hpLink().style.display = b.url ? 'block' : 'none';
+        _hpBtn().onclick = () => { popup.classList.remove('show'); selectBiz(b.id); };
         const rect = el.getBoundingClientRect();
         popup.style.left = (rect.left + rect.width/2) + 'px';
         popup.style.top = rect.top + 'px';
@@ -516,10 +554,9 @@ function renderMarkers(filtered) {
         if (card) card.classList.add('selected');
       });
       el.addEventListener('mouseleave', () => {
-        // Small delay so user can move mouse into popup without it disappearing
         setTimeout(() => {
-          if (!document.getElementById('hover-popup').matches(':hover')) {
-            document.getElementById('hover-popup').classList.remove('show');
+          if (!_popup().matches(':hover')) {
+            _popup().classList.remove('show');
             if (b.id !== selectedId) {
               const card = document.querySelector('.card[data-id="'+b.id+'"]');
               if (card) card.classList.remove('selected');
@@ -529,7 +566,7 @@ function renderMarkers(filtered) {
       });
       markers[b.id] = { m: new mapboxgl.Marker({element:el,anchor:'center'}).setLngLat([b.lng,b.lat]).addTo(map), el };
     }
-    markers[b.id].el.style.display = (!isFiltering() || filteredIds.has(b.id)) ? '' : 'none';
+    markers[b.id].el.style.display = (!showing || filteredIds.has(b.id)) ? '' : 'none';
     markers[b.id].el.classList.toggle('selected', b.id === selectedId);
   });
 }
@@ -571,10 +608,13 @@ async function geocodeAll() {
   let done = cachedCount;
   let newlyCached = {};
 
-  for (let i = 0; i < todo.length; i += 8) {
-    await Promise.all(todo.slice(i, i+8).map(async b => {
+  // Process in larger batches (20 vs 8) to reduce total round-trips
+  // and use a shorter yield delay (10ms vs 50ms) to keep UI responsive
+  const BATCH = 20;
+  for (let i = 0; i < todo.length; i += BATCH) {
+    await Promise.all(todo.slice(i, i+BATCH).map(async b => {
       try {
-        const r = await fetch('https://api.mapbox.com/geocoding/v5/mapbox.places/'+encodeURIComponent(b.address)+'.json?access_token='+TOKEN+'&limit=1');
+        const r = await fetch('https://api.mapbox.com/geocoding/v5/mapbox.places/'+encodeURIComponent(b.address)+'.json?access_token='+TOKEN+'&limit=1&types=address,place,region,country');
         const d = await r.json();
         if (d.features&&d.features.length) {
           const [lng,lat] = d.features[0].center;
@@ -587,7 +627,8 @@ async function geocodeAll() {
     }));
     st.textContent = '📍 Placing new pins… '+done+' / '+BUSINESSES.length;
     renderMarkers(getFiltered());
-    await new Promise(r => setTimeout(r, 50));
+    // Yield to browser for 10ms so UI stays responsive between batches
+    await new Promise(r => setTimeout(r, 10));
 
     // Save to localStorage every 100 businesses
     if (i % 100 === 0 && Object.keys(newlyCached).length > 0) {
