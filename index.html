@@ -616,10 +616,10 @@ document.getElementById('ai-search-btn').addEventListener('click', runAiSearch);
 document.getElementById('search-location').addEventListener('keydown', e => { if (e.key === 'Enter') runAiSearch(); });
 document.getElementById('search-activity').addEventListener('keydown', e => { if (e.key === 'Enter') runAiSearch(); });
 
-function runAiSearch() {
+async function runAiSearch() {
   const location = (document.getElementById('search-location').value || '').trim();
   const activity = (document.getElementById('search-activity').value || '').trim();
-  if (!location && !activity) { document.getElementById('search-location').focus(); return; }
+  if (!location) { document.getElementById('search-location').focus(); return; }
   const query = [location, activity].filter(Boolean).join(' ');
 
   const btn = document.getElementById('ai-search-btn');
@@ -631,18 +631,19 @@ function runAiSearch() {
   document.getElementById('ai-show-map').style.display = 'none';
   document.getElementById('ai-add-route').style.display = 'none';
 
+  // --- Pre-filter: score locally before sending to AI ---
   const q = query.toLowerCase();
   const locQ = location.toLowerCase();
-  const locWords = locQ.split(/[^a-zA-Z]+/).filter(w => w.length > 3);
-  const words = q.split(/[^a-zA-Z]+/).filter(w => w.length > 2);
+  const actQ = activity.toLowerCase();
+  const locWords = locQ.split(/[^a-z]+/).filter(w => w.length > 2);
+  const words = q.split(/[^a-z]+/).filter(w => w.length > 2);
 
-  // Synonym expansion
   const synonyms = {
-    'raft':['rafting','whitewater','river float','river'],
+    'raft':['rafting','whitewater','river float'],
     'kayak':['kayaking','canoeing','canoe','paddle','paddling','sup'],
     'canyon':['canyoning','canyoneering'],
     'fish':['fishing','fly fishing','angling'],
-    'hike':['hiking','trekking','trail','walk'],
+    'hike':['hiking','trekking','trail'],
     'bike':['biking','cycling','mountain bike','mtb'],
     'ski':['skiing','snowboard','snowboarding'],
     'climb':['climbing','bouldering','rock climb'],
@@ -650,7 +651,7 @@ function runAiSearch() {
     'horse':['horseback','equestrian','riding'],
     'tour':['tours','guided','sightseeing'],
     'camp':['camping','glamping'],
-    'wildlife':['whale watching','bear watching','birding','wildlife'],
+    'wildlife':['whale watching','bear watching','birding'],
     'shuttle':['shuttle','transport','transfer'],
   };
   const expanded = new Set(words);
@@ -664,13 +665,12 @@ function runAiSearch() {
   });
   const terms = Array.from(expanded);
 
-  // Country detection from location field
   const canadianPlaces = ['bc','alberta','ontario','quebec','canada','vancouver','victoria',
     'calgary','edmonton','toronto','banff','jasper','whistler','canmore','kelowna','kamloops',
     'revelstoke','golden','nelson','fernie','lake louise','tofino','squamish','pemberton',
-    'invermere','radium','kimberley','cranbrook','elko','blaeberry','peachland','osoyoos'];
+    'invermere','radium','kimberley','cranbrook','elko','blaeberry'];
   const usPlaces = ['colorado','california','oregon','washington','montana','wyoming','utah',
-    'arizona','florida','texas','nevada','idaho','usa','united states'];
+    'arizona','florida','texas','nevada','idaho'];
   const intlPlaces = ['africa','kenya','madagascar','portugal','europe','zambia'];
   const INTL_IDS = new Set([12, 17, 1293, 16]);
 
@@ -678,16 +678,12 @@ function runAiSearch() {
   const isUSA = usPlaces.some(p => locQ.includes(p));
   const isIntl = intlPlaces.some(p => q.includes(p));
 
-  // Score all businesses
   const scored = BUSINESSES.map(b => {
     let score = 0;
     const addr = (b.address || '').toLowerCase();
     const hay = (b.name + ' ' + addr + ' ' + b.tags.join(' ')).toLowerCase();
 
-    // Block international unless searched
     if (INTL_IDS.has(b.id) && !isIntl) return { b, score: 0 };
-
-    // Country filter
     if (isCanada) {
       const inCanada = canadianPlaces.some(p => addr.includes(p)) || addr.includes('canada');
       if (!inCanada) return { b, score: 0 };
@@ -696,598 +692,54 @@ function runAiSearch() {
       if (inCanada) return { b, score: 0 };
     }
 
-    // Location match — highest priority
-    locWords.forEach(w => { if (addr.includes(w)) score += 15; });
-
-    // Activity/term match
+    locWords.forEach(w => { if (addr.includes(w)) score += 15; if (hay.includes(w)) score += 5; });
     terms.forEach(t => { if (hay.includes(t)) score += 3; });
     words.forEach(w => { if (hay.includes(w)) score += 1; });
-
-    // Pass offer bonus
     if (b.offer) score += 2;
 
     return { b, score };
-  })
-  .filter(x => x.score > 0)
-  .sort((a, b) => b.score - a.score)
-  .slice(0, 8);
+  }).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 100);
 
-  aiResults = scored.map(s => ({
-    biz: s.b,
-    reason: s.b.tags.filter(t => terms.some(term => t.toLowerCase().includes(term))).slice(0,3).join(', ') || (s.b.offer ? 'Road Trip Pass offer — 20% off' : 'Matches your search'),
-    savings: s.b.offer ? Math.round(estimatePricePerPerson(s.b) * groupSize * 0.20) : 0
-  }));
-
-  // Summary
-  const offerCount = aiResults.filter(r => r.biz.offer).length;
-  const totalSavings = aiResults.reduce((sum, r) => sum + r.savings, 0);
-  let summary = aiResults.length === 0
-    ? `No operators found near "${location}"${activity ? ' for ' + activity : ''}. Try a nearby city or broader activity.`
-    : `Found ${aiResults.length} operator${aiResults.length > 1 ? 's' : ''} near ${location}${activity ? ' for ' + activity : ''}.`
-      + (offerCount > 0 ? ` ${offerCount} have Road Trip Pass offers` : '')
-      + (totalSavings > 0 ? ` — group of ${groupSize} saves ~$${totalSavings} total.` : '.');
-
-  document.getElementById('ai-response').innerHTML =
-    '<div style="line-height:1.65;color:var(--text)">✨ ' + escHtml(summary) + '</div>';
-
-  const list = document.getElementById('ai-results-list');
-  list.innerHTML = '';
-  if (aiResults.length === 0) {
-    list.innerHTML = '<div style="padding:14px 16px;color:var(--text-muted);font-size:12px">Try: a nearby town, or leave activity blank to see everything in the area.</div>';
-  } else {
-    aiResults.forEach((r, i) => {
-      const row = document.createElement('div');
-      row.className = 'ai-biz-row';
-      row.innerHTML =
-        `<div class="ai-biz-num">${i+1}</div>`
-        +`<div class="ai-biz-info">`
-        +  `<div class="ai-biz-name">${escHtml(r.biz.name)}${r.biz.offer?'<span class="ai-biz-offer">🎟️ 20% off</span>':''}</div>`
-        +  `<div class="ai-biz-meta">${escHtml(r.biz.address||'')} · ${escHtml((r.biz.tags||[]).slice(0,3).join(', '))}</div>`
-        +  `<div class="ai-biz-meta" style="font-style:italic;margin-top:2px">${escHtml(r.reason)}</div>`
-        +  (r.savings>0?`<div class="ai-biz-saving">~$${r.savings} savings for ${groupSize} people</div>`:'')
-        +`</div>`;
-      row.addEventListener('click', () => {
-        closeAiPanel();
-        if (r.biz.lat && r.biz.lng) {
-          selectBiz(r.biz.id);
-          map.flyTo({center:[r.biz.lng,r.biz.lat],zoom:12,duration:800});
-        } else if (r.biz.url) {
-          window.open(r.biz.url, '_blank');
-        }
-      });
-      list.appendChild(row);
-    });
-    document.getElementById('ai-show-map').style.display = 'block';
-    document.getElementById('ai-add-route').style.display = 'block';
-  }
-
-  document.getElementById('ai-show-map').onclick = () => {
-    closeAiPanel();
-    const lngs = aiResults.filter(r=>r.biz.lng).map(r=>r.biz.lng);
-    const lats = aiResults.filter(r=>r.biz.lat).map(r=>r.biz.lat);
-    if (lngs.length) map.fitBounds(
-      [[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]],
-      {padding:120,duration:1000,maxZoom:10}
-    );
-    aiResults.forEach(r => {
-      const m = markers[r.biz.id];
-      if (m) { m.el.style.transform='scale(2)'; m.el.style.zIndex='50'; setTimeout(()=>{m.el.style.transform='';m.el.style.zIndex='';},2500); }
-    });
-  };
-
-  document.getElementById('ai-add-route').onclick = () => {
-    closeAiPanel();
-    aiResults.forEach(r => {
-      if (!routeStops.find(s=>s.id===r.biz.id) && r.biz.lat)
-        routeStops.push({id:r.biz.id, name:r.biz.name, lat:r.biz.lat, lng:r.biz.lng});
-    });
-    document.getElementById('route-panel').style.display='block';
-    const sc=document.getElementById('stop-count');
-    sc.textContent=routeStops.length; sc.style.display='flex';
-    document.getElementById('route-pill').style.borderColor='var(--navy)';
-    updateRoutePlan();
-    if (routeStops.length>=2) drawRouteFromStops();
-  };
-
-  btn.textContent = '✨ Search';
-  btn.classList.remove('loading');
-}
-
-// Fallback local search if API unavailable
-function runLocalSearch(query) {
-  document.getElementById('ai-response').innerHTML =
-    '<div style="color:var(--text-muted);font-size:12px">⚡ Using quick search (AI unavailable)</div>';
-  const q = query.toLowerCase();
-  const words = q.split(/\s+/).filter(w => w.length > 2);
-  const results = BUSINESSES
-    .filter(b => {
-      const hay = (b.name+' '+(b.address||'')+' '+b.tags.join(' ')).toLowerCase();
-      return words.some(w => hay.includes(w));
-    })
-    .sort((a,b) => (b.offer?1:0)-(a.offer?1:0))
-    .slice(0,6);
-  aiResults = results.map(b => ({biz:b, reason:'Matches your search', savings: b.offer ? Math.round(estimatePricePerPerson(b)*groupSize*0.2) : 0}));
-  const list = document.getElementById('ai-results-list');
-  list.innerHTML = '';
-  aiResults.forEach((r,i) => {
-    const row = document.createElement('div');
-    row.className = 'ai-biz-row';
-    row.innerHTML = `<div class="ai-biz-num">${i+1}</div><div class="ai-biz-info"><div class="ai-biz-name">${escHtml(r.biz.name)}${r.biz.offer?'<span class="ai-biz-offer">🎟️ 20% off</span>':''}</div><div class="ai-biz-meta">${escHtml(r.biz.address||'')}</div></div>`;
-    row.addEventListener('click', () => { closeAiPanel(); if(r.biz.lat) { selectBiz(r.biz.id); map.flyTo({center:[r.biz.lng,r.biz.lat],zoom:12}); } });
-    list.appendChild(row);
-  });
-  if (aiResults.length > 0) { document.getElementById('ai-show-map').style.display='block'; document.getElementById('ai-add-route').style.display='block'; }
-}
-document.getElementById('filter-pill').addEventListener('click', e => {
-  e.stopPropagation();
-  const p=document.getElementById('filter-panel');
-  p.classList.toggle('open');
-  document.getElementById('filter-pill').classList.toggle('active', p.classList.contains('open'));
-});
-document.getElementById('filter-panel').addEventListener('click', e => e.stopPropagation());
-document.querySelectorAll('.tb').forEach(btn => btn.addEventListener('click', () => {
-  const tag=btn.dataset.tag;
-  if(activeTags.has(tag)){activeTags.delete(tag);btn.classList.remove('active');}
-  else{activeTags.add(tag);btn.classList.add('active');}
-  const c=activeTags.size;
-  const el=document.getElementById('afc'); el.textContent=c; el.classList.toggle('show',c>0);
-  document.getElementById('clear-pill').classList.toggle('show', offersOnly||activeTags.size>0||searchQuery.length>0);
-  render();
-}));
-function clearAll() {
-  searchQuery=''; document.getElementById('search').value='';
-  activeTags.clear(); offersOnly=false; selectedId=null;
-  document.getElementById('offers-btn').classList.remove('active');
-  document.querySelectorAll('.tb').forEach(b=>b.classList.remove('active'));
-  const el=document.getElementById('afc'); el.textContent='0'; el.classList.remove('show');
-  document.getElementById('clear-pill').classList.remove('show');
-  document.getElementById('detail').classList.remove('open');
-  document.getElementById('results-panel').classList.remove('open');
-  document.getElementById('filter-panel').classList.remove('open');
-  document.getElementById('filter-pill').classList.remove('active');
-  Object.values(markers).forEach(m=>{m.el.classList.remove('selected');m.el.style.display='';});
-  map.flyTo({center:[-95,45],zoom:3.5,speed:1.2});
-}
-document.getElementById('clear-pill').addEventListener('click', clearAll);
-document.getElementById('clear-tags').addEventListener('click', clearAll);
-
-// ── ROUTE PLANNER
-let routeStops = [];
-let routeLayerAdded = false;
-
-document.getElementById('route-pill').addEventListener('click', e => {
-  e.stopPropagation();
-  const p = document.getElementById('route-panel');
-  p.style.display = p.style.display === 'none' ? 'block' : 'none';
-});
-document.getElementById('route-panel-close').addEventListener('click', () => {
-  document.getElementById('route-panel').style.display = 'none';
-});
-document.getElementById('route-clear').addEventListener('click', clearRoute);
-
-// Group size controls
-document.getElementById('group-minus').addEventListener('click', () => {
-  if (groupSize > 1) { groupSize--; document.getElementById('group-count').textContent = groupSize; calcSavings(); }
-});
-document.getElementById('group-plus').addEventListener('click', () => {
-  if (groupSize < 50) { groupSize++; document.getElementById('group-count').textContent = groupSize; calcSavings(); }
-});
-
-document.getElementById('detail-add-stop').addEventListener('click', () => {
-  const b = BUSINESSES.find(x => x.id === selectedId);
-  if (!b || !b.lat || !b.lng) { alert('This business has not been placed on the map yet — try again in a moment.'); return; }
-  if (routeStops.find(s => s.id === b.id)) { alert('Already in your route!'); return; }
-  routeStops.push({id:b.id, name:b.name, lat:b.lat, lng:b.lng});
-  updateRoutePlan();
-  // Close detail panel but stay zoomed in — don't fly back to full map
-  document.getElementById('detail').classList.remove('open');
-  Object.values(markers).forEach(m => m.el.classList.remove('selected'));
-  // Show route panel
-  document.getElementById('route-panel').style.display = 'block';
-  document.getElementById('route-pill').style.borderColor = 'var(--orange)';
-  document.getElementById('route-pill').style.color = 'var(--orange)';
-  const sc = document.getElementById('stop-count');
-  sc.style.display = 'inline'; sc.textContent = routeStops.length;
-});
-
-document.getElementById('detail-directions').addEventListener('click', () => {
-  const b = BUSINESSES.find(x => x.id === selectedId);
-  if (!b || !b.lat || !b.lng) { alert('This business has not been placed on the map yet.'); return; }
-  if (!userLat || !userLng) {
-    // No location — open Google Maps from current location
-    window.open('https://www.google.com/maps/dir/?api=1&destination='+b.lat+','+b.lng, '_blank');
-    return;
-  }
-  // Draw route on map
-  drawRoute([{lat:userLat,lng:userLng},{lat:b.lat,lng:b.lng}]);
-  // Show external links
-  showDirectionLinks([{lat:userLat,lng:userLng},{lat:b.lat,lng:b.lng}], b.name);
-});
-
-let legTimes = [];
-let dragSrcIdx = null;
-let groupSize = 2;
-const PASS_COST = 99;
-
-// Estimated avg price per person by activity type
-const PRICE_ESTIMATES = {
-  kayaking: 110, rafting: 140, fishing: 120, snorkeling: 95, surfing: 100,
-  sailing: 130, scuba: 160, paddleboarding: 75, canoeing: 90, tubing: 65,
-  skiing: 120, snowmobiling: 150, snowshoeing: 60, "hot air balloon": 250,
-  "dog sledding": 180, ziplining: 90, "rock climbing": 95, "mountain biking": 80,
-  trekking: 85, hiking: 60, atv: 110, horseback: 95, cycling: 70,
-  "wildlife viewing": 95, "bear watching": 120, "whale watching": 110,
-  "bird watching": 75, safari: 130, "guided tour": 95, "city tour": 65,
-  "wine tour": 85, "food tour": 75, "cultural tour": 70, "boat tour": 90,
-  "helicopter tour": 280, photography: 110, yoga: 60, meditation: 50,
-  glamping: 130, camping: 55, accommodations: 120,
-  default: 95
-};
-
-function estimatePricePerPerson(business) {
-  if (!business) return PRICE_ESTIMATES.default;
-  const tags = (business.tags || []).map(t => t.toLowerCase());
-  const name = (business.name || '').toLowerCase();
-  const combined = [...tags, name].join(' ');
-  for (const [key, price] of Object.entries(PRICE_ESTIMATES)) {
-    if (key !== 'default' && combined.includes(key)) return price;
-  }
-  return PRICE_ESTIMATES.default;
-}
-
-function calcSavings() {
-  const offerStops = routeStops.filter(s => {
-    const biz = BUSINESSES.find(b => b.id === s.id);
-    return biz && biz.offer;
-  });
-  if (offerStops.length === 0) {
-    document.getElementById('savings-box').style.display = 'none';
-    return;
-  }
-  let lines = [];
-  let total = 0;
-  offerStops.forEach(s => {
-    const biz = BUSINESSES.find(b => b.id === s.id);
-    const pricePerPerson = estimatePricePerPerson(biz);
-    const groupTotal = pricePerPerson * groupSize;
-    const saving = Math.round(groupTotal * 0.20);
-    total += saving;
-    lines.push(escHtml(biz.name.length > 28 ? biz.name.substring(0,28)+'…' : biz.name) + ' · ~$' + saving + ' off');
-  });
-  const net = total - PASS_COST;
-  const box = document.getElementById('savings-box');
-  box.style.display = 'block';
-  document.getElementById('savings-total').textContent = '$' + total.toLocaleString();
-  document.getElementById('savings-detail').innerHTML = lines.join('<br>') + '<br><span style="opacity:.6">Based on ' + groupSize + ' people × 20% off est. prices</span>';
-  const netEl = document.getElementById('savings-net');
-  if (net > 0) {
-    netEl.textContent = '$' + net.toLocaleString() + ' ahead 🎉';
-    netEl.style.color = '#a8f0e8';
-  } else {
-    netEl.textContent = 'add more stops to cover pass cost';
-    netEl.style.color = 'rgba(255,255,255,0.6)';
-  }
-}
-
-function updateRoutePlan(legData) {
-  if (legData) legTimes = legData;
-  const stopsEl = document.getElementById('route-stops');
-  stopsEl.innerHTML = '';
-
-  if (routeStops.length === 0) {
-    stopsEl.innerHTML = '<p style="font-size:12px;color:var(--text-dim);padding:8px 4px">Add businesses from their detail panel to build your route.</p>';
-    document.getElementById('route-summary').style.display = 'none';
-    document.getElementById('route-go-google').style.display = 'none';
-    document.getElementById('route-go-apple').style.display = 'none';
-    document.getElementById('route-share').style.display = 'none';
+  if (scored.length === 0) {
+    document.getElementById('ai-response').innerHTML = '<div style="color:var(--text)">No operators found near "' + escHtml(location) + '". Try a nearby city or broaden your search.</div>';
+    btn.textContent = '✨ Search';
+    btn.classList.remove('loading');
     return;
   }
 
-  routeStops.forEach((s, i) => {
-    const div = document.createElement('div');
-    div.draggable = true;
-    div.dataset.idx = i;
-    div.style.cssText = 'display:flex;align-items:center;gap:8px;padding:8px 4px;border-bottom:1px solid var(--border);cursor:grab;border-radius:6px;transition:background .15s';
-    div.innerHTML =
-      '<div style="color:var(--text-dim);font-size:16px;cursor:grab;flex-shrink:0" title="Drag to reorder">⠿</div>'
-      +'<div style="width:22px;height:22px;border-radius:50%;background:var(--navy);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
-      +'<div style="flex:1;min-width:0"><div style="font-size:12px;font-weight:600;color:var(--text);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.name)+'</div></div>'
-      +'<button data-idx="'+i+'" style="background:none;border:none;cursor:pointer;color:var(--text-dim);font-size:13px;padding:2px 4px;flex-shrink:0" class="remove-stop">✕</button>';
+  // Build concise prompt for AI
+  const bizList = scored.map(s => {
+    const b = s.b;
+    return `ID:${b.id}|${b.name}|${(b.address||'').replace(/\n/g,' ')}|${b.tags.slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`;
+  }).join('\n');
 
-    div.addEventListener('dragstart', e => { dragSrcIdx = i; div.style.opacity='0.4'; e.dataTransfer.effectAllowed='move'; });
-    div.addEventListener('dragend', () => { div.style.opacity='1'; });
-    div.addEventListener('dragover', e => { e.preventDefault(); div.style.background='rgba(30,58,95,0.06)'; });
-    div.addEventListener('dragleave', () => { div.style.background=''; });
-    div.addEventListener('drop', e => {
-      e.preventDefault(); div.style.background='';
-      if (dragSrcIdx===null||dragSrcIdx===i) return;
-      const moved = routeStops.splice(dragSrcIdx,1)[0];
-      routeStops.splice(i,0,moved);
-      dragSrcIdx=null; legTimes=[];
-      clearRouteMarkers();
-      updateRoutePlan();
-      if (routeStops.length>=2) drawRouteFromStops();
-      else updateRouteMarkers();
-    });
-    stopsEl.appendChild(div);
+  const prompt = `You are a travel assistant for BUGMe.Travel, a Canadian/USA road trip platform.
 
-    // Leg time between stops
-    if (i < routeStops.length-1) {
-      const leg = legTimes[i];
-      const legDiv = document.createElement('div');
-      legDiv.style.cssText = 'display:flex;align-items:center;gap:6px;padding:3px 4px 3px 38px;font-size:10px;color:var(--text-muted)';
-      if (leg) {
-        const km=(leg.distance/1000).toFixed(0);
-        const hrs=Math.floor(leg.duration/3600);
-        const mins=Math.floor((leg.duration%3600)/60);
-        legDiv.innerHTML = '↓ 🚗 '+(hrs>0?hrs+'h '+mins+'m':mins+' min')+' · '+km+' km';
-      } else {
-        legDiv.innerHTML = '↓ <span style="color:var(--text-dim)">calculating…</span>';
-      }
-      stopsEl.appendChild(legDiv);
-    }
-  });
+LOCATION: "${location}"
+ACTIVITY: "${activity || 'any'}"
 
-  stopsEl.querySelectorAll('.remove-stop').forEach(btn => {
-    btn.addEventListener('click', () => {
-      routeStops.splice(parseInt(btn.dataset.idx),1);
-      legTimes=[];
-      clearRouteMarkers();
-      calcSavings();
-      updateRoutePlan();
-      if (routeStops.length>=2) drawRouteFromStops();
-      else clearRouteFromMap();
-      const sc=document.getElementById('stop-count');
-      if (routeStops.length===0){sc.style.display='none';document.getElementById('route-pill').style.borderColor='';document.getElementById('route-pill').style.color='';}
-      else sc.textContent=routeStops.length;
-    });
-  });
+STRICT RULE: ONLY return operators whose address is in or very near "${location}" (within ~100km). Zero exceptions.
 
-  if (routeStops.length>=2) {
-    document.getElementById('route-go-google').style.display='block';
-    document.getElementById('route-go-apple').style.display='block';
-    document.getElementById('route-share').style.display='block';
-    const coords=routeStops.map(s=>s.lat+','+s.lng);
-    const origin=coords[0],dest=coords[coords.length-1];
-    const waypoints=coords.slice(1,-1).join('|');
-    const gUrl='https://www.google.com/maps/dir/?api=1&origin='+origin+'&destination='+dest+(waypoints?'&waypoints='+waypoints:'');
-    const aUrl='https://maps.apple.com/?saddr='+origin+'&daddr='+coords.slice(1).join('+to:');
-    document.getElementById('route-go-google').onclick=()=>window.open(gUrl,'_blank');
-    document.getElementById('route-go-apple').onclick=()=>window.open(aUrl,'_blank');
-  } else {
-    document.getElementById('route-go-google').style.display='none';
-    document.getElementById('route-go-apple').style.display='none';
-    document.getElementById('route-share').style.display='none';
-    clearRouteFromMap();
-  }
-  calcSavings();
-}
+From this list, pick the TOP 6 most relevant operators. Return ONLY a JSON array:
+[{"id":123,"reason":"one short sentence why this fits"}]
 
-async function drawRouteFromStops() {
-  const points = routeStops.map(s => [s.lng, s.lat]);
-  await drawRoute(routeStops.map(s => ({lat:s.lat, lng:s.lng})));
-}
+Operators:
+${bizList}
 
-async function drawRoute(points) {
-  if (points.length < 2) return;
-
-  // Show numbered markers immediately — don't wait for route calc
-  updateRouteMarkers();
-
-  // Show instant feedback
-  document.getElementById('route-summary').style.display='block';
-  document.getElementById('route-summary').innerHTML='🚗 Calculating route…';
-
-  // Fit map to stops immediately too
-  const lngs = points.map(p=>p.lng), lats = points.map(p=>p.lat);
-  map.fitBounds([[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]],{padding:100,duration:800});
+Return only the JSON array, no other text.`;
 
   try {
-    const coords = points.map(p => p.lng+','+p.lat).join(';');
-
-    // Race against a 8 second timeout
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 8000);
-
-    const r = await fetch(
-      'https://api.mapbox.com/directions/v5/mapbox/driving/'+coords+'?access_token='+TOKEN+'&geometries=geojson&overview=simplified',
-      { signal: controller.signal }
-    );
-    clearTimeout(timeout);
-
-    const d = await r.json();
-    if (!d.routes||!d.routes.length) return;
-    const route = d.routes[0];
-    const geojson = route.geometry;
-
-    // Per-leg times
-    const newLegTimes = (route.legs||[]).map(leg=>({distance:leg.distance,duration:leg.duration}));
-
-    // Total summary
-    const distKm=(route.distance/1000).toFixed(0);
-    const hrs=Math.floor(route.duration/3600);
-    const mins=Math.floor((route.duration%3600)/60);
-    const timeStr=hrs>0?hrs+'h '+mins+'m':mins+' min';
-    document.getElementById('route-summary').style.display='block';
-    document.getElementById('route-summary').innerHTML='🚗 Total: <strong>'+distKm+' km</strong> · <strong>'+timeStr+'</strong>';
-
-    // Draw route line
-    if (map.getSource('route')) {
-      map.getSource('route').setData({type:'Feature',geometry:geojson});
-    } else {
-      map.addSource('route',{type:'geojson',data:{type:'Feature',geometry:geojson}});
-      map.addLayer({id:'route-line-bg',type:'line',source:'route',paint:{'line-color':'#ffffff','line-width':7,'line-opacity':0.5}});
-      map.addLayer({id:'route-line',type:'line',source:'route',paint:{'line-color':'#1e3a5f','line-width':4,'line-opacity':0.9}});
-      routeLayerAdded=true;
-    }
-
-    // Update leg times in panel
-    updateRoutePlan(newLegTimes);
-
-  } catch(e) {
-    if (e.name === 'AbortError') {
-      console.warn('Route timed out — showing markers only');
-      document.getElementById('route-summary').style.display='block';
-      document.getElementById('route-summary').innerHTML='🚗 Route drawn — times unavailable';
-    } else {
-      console.error('Route error:',e);
-    }
-  }
-}
-
-function showDirectionLinks(points, name) {
-  const origin = points[0].lat+','+points[0].lng;
-  const dest = points[points.length-1].lat+','+points[points.length-1].lng;
-  const gUrl = 'https://www.google.com/maps/dir/?api=1&origin='+origin+'&destination='+dest;
-  const aUrl = 'https://maps.apple.com/?saddr='+origin+'&daddr='+dest;
-  // Show in detail panel
-  const existing = document.getElementById('dir-links');
-  if (existing) existing.remove();
-  const div = document.createElement('div');
-  div.id = 'dir-links';
-  div.style.cssText = 'display:flex;gap:8px;margin-top:8px';
-  div.innerHTML = '<a href="'+gUrl+'" target="_blank" style="flex:1;background:#4285f4;color:white;text-decoration:none;text-align:center;padding:8px;border-radius:8px;font-size:11px;font-weight:700">🗺️ Google Maps</a>'
-    +'<a href="'+aUrl+'" target="_blank" style="flex:1;background:#555;color:white;text-decoration:none;text-align:center;padding:8px;border-radius:8px;font-size:11px;font-weight:700">🍎 Apple Maps</a>';
-  document.getElementById('detail-link').after(div);
-}
-
-// Numbered route markers
-let routeMarkers = [];
-
-function updateRouteMarkers() {
-  // Remove old route markers
-  routeMarkers.forEach(m => m.remove());
-  routeMarkers = [];
-  if (routeStops.length === 0) return;
-
-  routeStops.forEach((s, i) => {
-    if (!s.lat || !s.lng) return;
-    const el = document.createElement('div');
-    el.style.cssText = 'width:28px;height:28px;border-radius:50%;background:var(--navy);color:white;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:900;font-family:DM Sans,sans-serif;border:3px solid white;box-shadow:0 2px 8px rgba(0,0,0,0.4);cursor:pointer;z-index:20;transition:transform .15s';
-    el.style.setProperty('--navy', '#1e3a5f');
-    el.style.background = '#1e3a5f';
-    el.textContent = i + 1;
-    el.title = s.name;
-    el.addEventListener('click', () => selectBiz(s.id));
-    el.addEventListener('mouseenter', () => { el.style.transform = 'scale(1.2)'; el.style.boxShadow = '0 4px 14px rgba(30,58,95,0.5)'; });
-    el.addEventListener('mouseleave', () => { el.style.transform = ''; el.style.boxShadow = '0 2px 8px rgba(0,0,0,0.4)'; });
-    const marker = new mapboxgl.Marker({element: el, anchor: 'center'})
-      .setLngLat([s.lng, s.lat])
-      .addTo(map);
-    routeMarkers.push(marker);
-    // Hide the regular pin for this stop
-    if (markers[s.id]) markers[s.id].el.style.display = 'none';
-  });
-}
-
-function clearRouteMarkers() {
-  routeMarkers.forEach(m => m.remove());
-  routeMarkers = [];
-  // Restore regular pins
-  routeStops.forEach(s => {
-    if (markers[s.id]) markers[s.id].el.style.display = '';
-  });
-}
-
-function clearRouteFromMap() {
-  if (map.getLayer('route-line')) map.removeLayer('route-line');
-  if (map.getLayer('route-line-bg')) map.removeLayer('route-line-bg');
-  if (map.getSource('route')) map.removeSource('route');
-  routeLayerAdded = false;
-  document.getElementById('route-summary').style.display = 'none';
-  clearRouteMarkers();
-}
-
-function clearRoute() {
-  clearRouteMarkers();
-  routeStops = [];
-  legTimes = [];
-  clearRouteFromMap();
-  updateRoutePlan();
-  document.getElementById('savings-box').style.display = 'none';
-  document.getElementById('stop-count').style.display = 'none';
-  document.getElementById('route-pill').style.borderColor = '';
-  document.getElementById('route-pill').style.color = '';
-}
-
-// Replace var_navy placeholder with actual color value
-updateRoutePlan();
-
-// ── SHARE ROUTE
-document.getElementById('route-share').addEventListener('click', openShareModal);
-document.getElementById('share-modal-close').addEventListener('click', () => { document.getElementById('share-modal').style.display = 'none'; });
-document.getElementById('copy-link').addEventListener('click', () => {
-  const input = document.getElementById('share-url');
-  input.select(); document.execCommand('copy');
-  document.getElementById('copy-link').textContent = '✓ Copied!';
-  setTimeout(() => document.getElementById('copy-link').textContent = 'Copy', 2000);
-});
-
-async function openShareModal() {
-  if (routeStops.length < 2) { alert('Add at least 2 stops to share your route.'); return; }
-  
-  // Build shareable URL — encode stops as base64
-  const stopData = routeStops.map(s => ({ id: s.id, name: s.name, lat: s.lat, lng: s.lng }));
-  const encoded = btoa(JSON.stringify(stopData));
-  const shareUrl = window.location.origin + window.location.pathname + '?route=' + encoded;
-  document.getElementById('share-url').value = shareUrl;
-
-  // Build stop list in card
-  const stopsEl = document.getElementById('share-card-stops');
-  stopsEl.innerHTML = routeStops.map((s, i) => {
-    const biz = BUSINESSES.find(b => b.id === s.id);
-    const hasOffer = biz && biz.offer;
-    return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">'
-      + '<div style="width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,0.2);color:white;display:flex;align-items:center;justify-content:center;font-size:10px;font-weight:700;flex-shrink:0">'+(i+1)+'</div>'
-      + '<div style="flex:1;font-size:12px;font-weight:600;color:white;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+escHtml(s.name)+'</div>'
-      + (hasOffer ? '<span style="font-size:9px;background:#2a9d8f;color:white;padding:2px 6px;border-radius:10px;white-space:nowrap">🎟️ Offer</span>' : '')
-      + '</div>';
-  }).join('');
-
-  // Show modal
-  document.getElementById('share-modal').style.display = 'flex';
-  document.getElementById('share-card-savings').innerHTML = '<div style="font-size:12px;color:rgba(255,255,255,0.7)">✨ Estimating savings…</div>';
-  document.getElementById('savings-loading').style.display = 'block';
-
-  // AI savings estimation
-  try {
-    const offerStops = routeStops.filter(s => { const b = BUSINESSES.find(x => x.id === s.id); return b && b.offer; });
-    const stopDescriptions = routeStops.map(s => {
-      const b = BUSINESSES.find(x => x.id === s.id);
-      return s.name + (b && b.offer ? ' (offers 20% Road Trip Pass discount, URL: '+(b.url||'unknown')+')' : '');
-    }).join(', ');
-
-    const prompt = `You are a savings calculator for BUGMe Road Trip Pass, a travel discount program.
-
-A traveler has planned a road trip with these stops: ${stopDescriptions}
-
-For each business that offers the 20% Road Trip Pass discount, estimate what a typical customer might spend based on the type of business and location. Use your knowledge of typical pricing for outdoor adventure and tourism businesses.
-
-Return ONLY a JSON object like:
-{
-  "stops": [
-    {"name": "Business Name", "hasOffer": true, "typicalSpend": 150, "savings": 30, "note": "e.g. kayak tour"},
-    {"name": "Other Business", "hasOffer": false, "typicalSpend": 0, "savings": 0, "note": "no offer"}
-  ],
-  "totalSavings": 30,
-  "totalSpend": 150,
-  "summary": "One fun sentence about their trip savings"
-}
-
-Only include dollar amounts for businesses with hasOffer: true. Return only JSON.`;
-
-    const response = await fetch('https://api.anthropic.com/v1/messages', {
+    // Try /api/search proxy first, fall back to local results
+    const API_URL = window.BUGME_API_URL || '/api/search';
+    const API_URL = window.BUGME_API_URL || '/api/search';
+    const response = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-20250514',
-        max_tokens: 800,
-        messages: [{ role: 'user', content: prompt }]
-      })
+      body: JSON.stringify({ prompt })
     });
-
+    if (!response.ok) throw new Error('API ' + response.status);
     const data = await response.json();
-    const text = data.content[0].text.replace(/```json|```/g, '').trim();
+    const text = (data.text || '').replace(/```json|```/g, '').trim();
     const parsed = JSON.parse(text);
 
     document.getElementById('share-card-savings').innerHTML = 
