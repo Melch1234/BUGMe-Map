@@ -380,131 +380,65 @@ async function doSearch() {
   const btn = document.getElementById('search-btn');
   btn.textContent = '⏳'; btn.disabled = true;
 
-  // Parse location and activity from query
-  const lower = raw.toLowerCase();
-  const prepositions = ['near','in','around','at','close to'];
-  let loc = '', act = '';
-
-  for (const prep of prepositions) {
-    const idx = lower.indexOf(' ' + prep + ' ');
-    if (idx !== -1) {
-      act = raw.slice(0, idx).trim();
-      loc = raw.slice(idx + prep.length + 2).trim();
-      break;
-    }
-  }
-
-  if (!loc) {
-    // Try to detect known place names in query
-    const places = ['bc','alberta','ontario','quebec','canada','vancouver','victoria','calgary',
-      'edmonton','toronto','banff','jasper','whistler','canmore','kelowna','kamloops','revelstoke',
-      'golden','nelson','fernie','lake louise','tofino','squamish','invermere','radium','kimberley',
-      'cranbrook','colorado','california','oregon','washington','montana','wyoming','utah',
-      'arizona','florida','texas','nevada','idaho','alaska'];
-    const found = places.find(p => lower.includes(p));
-    if (found) {
-      const pi = lower.indexOf(found);
-      loc = raw.slice(pi, pi + found.length);
-      act = (raw.slice(0, pi) + raw.slice(pi + found.length)).trim();
-    } else {
-      act = raw;
-    }
-  }
-
-  // Pre-filter businesses
-  const locQ = loc.toLowerCase();
-  const actQ = act.toLowerCase();
-  const locWords = locQ.split(/[^a-z]+/).filter(w => w.length > 2);
-  const actWords = actQ.split(/[^a-z]+/).filter(w => w.length > 2);
-
-  // Synonym expansion
-  const SYNS = {
-    raft:['rafting','whitewater','river'],kayak:['kayaking','canoeing','canoe','paddle','sup'],
-    fish:['fishing','angling'],hike:['hiking','trekking','trail'],
-    bike:['biking','cycling','mtb'],ski:['skiing','snowboard'],
-    climb:['climbing','bouldering'],zip:['zipline','ziplining'],
-    horse:['horseback','equestrian'],tour:['tours','guided'],
-    camp:['camping','glamping'],shuttle:['shuttle','transport'],
-    wildlife:['whale watching','bear watching','birding'],
-  };
-  const expanded = new Set(actWords);
-  actWords.forEach(w => {
-    Object.entries(SYNS).forEach(([k,vals]) => {
-      if (k.includes(w)||w.includes(k)||vals.some(v=>v.includes(w)||w.includes(v))) {
-        expanded.add(k); vals.forEach(v => expanded.add(v));
-      }
-    });
-  });
-  const terms = Array.from(expanded);
-
-  const CA = ['bc','alberta','ontario','quebec','canada','vancouver','victoria','calgary','edmonton',
-    'toronto','banff','jasper','whistler','canmore','kelowna','kamloops','revelstoke','golden',
-    'nelson','fernie','lake louise','tofino','squamish','invermere','radium','kimberley','cranbrook'];
-  const US = ['colorado','california','oregon','washington','montana','wyoming','utah',
-    'arizona','florida','texas','nevada','idaho','alaska'];
+  // Build a compact list of ALL businesses for AI
+  // Only exclude the 4 international ones (africa/portugal) unless query mentions them
+  const q = raw.toLowerCase();
   const INTL = new Set([12,17,1293,16]);
-  const isCA = CA.some(p => locQ.includes(p));
-  const isUS = US.some(p => locQ.includes(p));
+  const wantsIntl = ['africa','kenya','madagascar','portugal','europe','zambia'].some(w => q.includes(w));
 
-  const scored = BUSINESSES.map(b => {
-    if (INTL.has(b.id)) return null;
-    const addr = (b.address||'').toLowerCase();
-    const hay = (b.name+' '+addr+' '+(b.tags||[]).join(' ')).toLowerCase();
-    // Country filter
-    if (isCA && !CA.some(p=>addr.includes(p)) && !addr.includes('canada')) return null;
-    if (isUS && (CA.some(p=>addr.includes(p)) || addr.includes('canada'))) return null;
-    // Score
-    let locScore = 0, actScore = 0;
-    locWords.forEach(w => { if (addr.includes(w)) locScore += 15; else if (hay.includes(w)) locScore += 3; });
-    terms.forEach(t => { if (hay.includes(t)) actScore += 4; });
-    actWords.forEach(w => { if (hay.includes(w)) actScore += 1; });
-    if (b.offer) actScore += 1;
-    // Must match both if both specified
-    if (loc && locScore === 0) return null;
-    if (act && actScore === 0) return null;
-    const score = locScore + actScore;
-    return score > 0 ? {b, score} : null;
-  }).filter(Boolean).sort((a,b) => b.score - a.score).slice(0, 80);
+  const allBiz = BUSINESSES
+    .filter(b => b.lat && b.lng && (wantsIntl || !INTL.has(b.id)))
+    .map(b => `ID:${b.id}|${b.name}|${(b.address||'').replace(/\n/g,' ')}|${(b.tags||[]).slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`)
+    .join('\n');
 
-  if (scored.length === 0) {
-    showResults([], raw, loc, act);
-    btn.textContent = '✨ Search'; btn.disabled = false;
-    return;
-  }
-
-  // Try AI ranking
   try {
-    const bizList = scored.map(s =>
-      `ID:${s.b.id}|${s.b.name}|${(s.b.address||'').replace(/\n/g,' ')}|${(s.b.tags||[]).slice(0,4).join(',')}${s.b.offer?'|PASS_OFFER':''}`
-    ).join('\n');
+    const prompt = `You are a search assistant for BUGMe.Travel, a road trip platform with 1,500+ adventure operators across Canada and the USA.
 
-    const prompt = `Travel assistant for BUGMe.Travel (Canada/USA adventure operators).
-SEARCH: "${raw}"
-LOCATION: "${loc||'not specified'}" ACTIVITY: "${act||'any'}"
-${loc ? 'STRICT: Only return operators within 100km of "' + loc + '".' : ''}
-Pick the TOP 6 most relevant. Return ONLY a JSON array:
-[{"id":123,"reason":"one sentence why this fits"}]
+A traveler searched for: "${raw}"
+
+From the operators list below, find the TOP 6 that best match this search. Use your understanding of geography and activities — you don't need explicit keywords to match. For example "kayak in ontario" should find kayaking businesses in Ontario, Canada even if the word "ontario" appears differently in the address (like "ON, Canada").
+
+IMPORTANT: Always include any operator marked PASS_OFFER that is relevant to the search — these businesses offer 20% discounts and should be prioritized.
+
+If no operators genuinely match the search, return an empty array [].
+
+Return ONLY a JSON array (no markdown, no other text):
+[{"id":123,"reason":"one sentence why this fits the search"}]
+
 Operators:
-${bizList}`;
+${allBiz}`;
 
-    const resp = await fetch('/api/search', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
-    if (!resp.ok) throw new Error('api');
+    const resp = await fetch('/api/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({prompt})
+    });
+
+    if (!resp.ok) throw new Error('api ' + resp.status);
     const data = await resp.json();
-    const picks = JSON.parse((data.text||'').replace(/```json|```/g,'').trim());
+    const text = (data.text || '').replace(/```json|```/g, '').trim();
+    const picks = JSON.parse(text);
+
     searchResults = picks.map(p => {
       const biz = BUSINESSES.find(b => b.id === p.id);
-      return biz ? {biz, reason: p.reason||''} : null;
+      return biz ? {biz, reason: p.reason || ''} : null;
     }).filter(Boolean);
-    if (!searchResults.length) throw new Error('empty');
+
   } catch(e) {
-    searchResults = scored.slice(0,6).map(s => ({biz:s.b, reason:''}));
+    console.warn('AI search failed:', e.message);
+    // Simple fallback - just text match
+    const words = q.split(/\s+/).filter(w => w.length > 2);
+    searchResults = BUSINESSES.filter(b => {
+      const hay = (b.name + ' ' + (b.address||'') + ' ' + (b.tags||[]).join(' ')).toLowerCase();
+      return words.some(w => hay.includes(w));
+    }).sort((a,b) => (b.offer?1:0)-(a.offer?1:0)).slice(0,6).map(b => ({biz:b, reason:''}));
   }
 
-  showResults(searchResults, raw, loc, act);
+  showResults(searchResults, raw);
   btn.textContent = '✨ Search'; btn.disabled = false;
 }
 
-function showResults(results, raw, loc, act) {
+function showResults(results, raw) {
   const panel = document.getElementById('results-panel');
   panel.style.display = 'flex';
 
@@ -512,7 +446,7 @@ function showResults(results, raw, loc, act) {
   document.getElementById('results-title').textContent = results.length ? `${results.length} Results` : 'No Results';
   document.getElementById('results-summary').textContent = results.length
     ? `For "${raw}"${offerCount ? ' · ' + offerCount + ' Pass offers' : ''}`
-    : `No operators found for "${raw}". Try a different location or activity.`;
+    : `No operators found for "${raw}". Try a different search.`;
 
   const body = document.getElementById('results-body');
   body.innerHTML = '';
