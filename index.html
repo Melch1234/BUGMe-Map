@@ -15,8 +15,8 @@
 <!-- Google Fonts: non-blocking with font-display=swap -->
 <link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'">
 <noscript><link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet"></noscript>
-<!-- Mapbox JS: async so it doesn't block HTML parsing -->
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js" async></script>
+<!-- Mapbox JS: defer so it doesn't block HTML parsing but executes in order -->
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js" defer></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -407,8 +407,7 @@ function initMap() {
   mapboxgl.accessToken = TOKEN;
   window.map = new mapboxgl.Map({
     container: 'map',
-    // Use the lighter 'light-v11' style — loads ~30% faster than streets-v12
-    style: 'mapbox://styles/mapbox/light-v11',
+    style: 'mapbox://styles/mapbox/streets-v12',
     center: [-95, 45],
     zoom: 2.5,
     // Reduce initial tile requests — only load what's visible
@@ -434,12 +433,8 @@ function initMap() {
   });
 }
 
-// Mapbox is loaded async — wait for it before calling initMap
-if (typeof mapboxgl !== 'undefined') {
-  initMap();
-} else {
-  document.querySelector('script[src*="mapbox-gl"]').addEventListener('load', initMap);
-}
+// With defer, Mapbox JS runs after HTML is parsed — DOMContentLoaded fires after all defer scripts
+document.addEventListener('DOMContentLoaded', initMap);
 
 
 
