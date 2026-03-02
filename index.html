@@ -631,10 +631,9 @@ async function runAiSearch() {
   document.getElementById('ai-show-map').style.display = 'none';
   document.getElementById('ai-add-route').style.display = 'none';
 
-  // --- Pre-filter: score locally before sending to AI ---
+  // Pre-filter: score locally before sending to AI
   const q = query.toLowerCase();
   const locQ = location.toLowerCase();
-  const actQ = activity.toLowerCase();
   const locWords = locQ.split(/[^a-z]+/).filter(w => w.length > 2);
   const words = q.split(/[^a-z]+/).filter(w => w.length > 2);
 
@@ -701,13 +700,14 @@ async function runAiSearch() {
   }).filter(x => x.score > 0).sort((a, b) => b.score - a.score).slice(0, 100);
 
   if (scored.length === 0) {
-    document.getElementById('ai-response').innerHTML = '<div style="color:var(--text)">No operators found near "' + escHtml(location) + '". Try a nearby city or broaden your search.</div>';
+    document.getElementById('ai-response').innerHTML =
+      '<div style="color:var(--text)">No operators found near "' + escHtml(location) + '". Try a nearby city or broaden your search.</div>';
     btn.textContent = '✨ Search';
     btn.classList.remove('loading');
     return;
   }
 
-  // Build concise prompt for AI
+  // Build prompt for AI
   const bizList = scored.map(s => {
     const b = s.b;
     return `ID:${b.id}|${b.name}|${(b.address||'').replace(/\n/g,' ')}|${b.tags.slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`;
@@ -718,51 +718,124 @@ async function runAiSearch() {
 LOCATION: "${location}"
 ACTIVITY: "${activity || 'any'}"
 
-STRICT RULE: ONLY return operators whose address is in or very near "${location}" (within ~100km). Zero exceptions.
+STRICT RULE: ONLY return operators whose address is in or very near "${location}" (within ~100km). No exceptions.
 
-From this list, pick the TOP 6 most relevant operators. Return ONLY a JSON array:
+From this list, pick the TOP 6 most relevant operators. Return ONLY a JSON array like:
 [{"id":123,"reason":"one short sentence why this fits"}]
 
 Operators:
 ${bizList}
 
-Return only the JSON array, no other text.`;
+Return only the JSON array, no markdown, no other text.`;
 
   try {
-    // Try /api/search proxy first, fall back to local results
-    const API_URL = window.BUGME_API_URL || '/api/search';
     const API_URL = window.BUGME_API_URL || '/api/search';
     const response = await fetch(API_URL, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ prompt })
     });
+
     if (!response.ok) throw new Error('API ' + response.status);
     const data = await response.json();
     const text = (data.text || '').replace(/```json|```/g, '').trim();
-    const parsed = JSON.parse(text);
+    let picks = JSON.parse(text);
 
-    document.getElementById('share-card-savings').innerHTML = 
-      '<div style="font-size:11px;color:rgba(255,255,255,0.6);letter-spacing:.08em;text-transform:uppercase;margin-bottom:8px">Estimated Road Trip Savings 🎟️</div>'
-      + parsed.stops.filter(s => s.hasOffer).map(s => 
-          '<div style="display:flex;justify-content:space-between;margin-bottom:4px">'
-          + '<span style="font-size:11px;color:rgba(255,255,255,0.8)">'+escHtml(s.name.length > 28 ? s.name.substring(0,28)+'…' : s.name)+'</span>'
-          + '<span style="font-size:11px;font-weight:700;color:#4db8a0">-$'+s.savings+'</span>'
-          + '</div>'
-        ).join('')
-      + '<div style="border-top:1px solid rgba(255,255,255,0.2);margin-top:8px;padding-top:8px;display:flex;justify-content:space-between">'
-      + '<span style="font-size:13px;font-weight:700;color:white">Total Saved</span>'
-      + '<span style="font-size:16px;font-weight:900;color:#4db8a0">-$'+parsed.totalSavings+'</span>'
-      + '</div>'
-      + '<div style="font-size:11px;color:rgba(255,255,255,0.6);margin-top:8px;font-style:italic">'+escHtml(parsed.summary)+'</div>';
+    aiResults = picks.map(p => {
+      const biz = BUSINESSES.find(b => b.id === p.id);
+      if (!biz) return null;
+      return {
+        biz,
+        reason: p.reason || '',
+        savings: biz.offer ? Math.round(estimatePricePerPerson(biz) * groupSize * 0.20) : 0
+      };
+    }).filter(Boolean);
 
-  } catch(e) {
-    const offerCount = routeStops.filter(s => { const b = BUSINESSES.find(x => x.id === s.id); return b && b.offer; }).length;
-    document.getElementById('share-card-savings').innerHTML = 
-      '<div style="font-size:13px;font-weight:700;color:white;margin-bottom:4px">🎟️ '+offerCount+' stops with Road Trip Pass offers</div>'
-      + '<div style="font-size:11px;color:rgba(255,255,255,0.7)">Save 20% at each participating business</div>';
+    if (aiResults.length === 0) throw new Error('No results from AI');
+
+  } catch (err) {
+    console.warn('AI search failed, using local results:', err.message);
+    aiResults = scored.slice(0, 6).map(s => ({
+      biz: s.b,
+      reason: s.b.tags.filter(t => terms.some(term => t.toLowerCase().includes(term))).slice(0, 3).join(', ') || 'Matches your search',
+      savings: s.b.offer ? Math.round(estimatePricePerPerson(s.b) * groupSize * 0.20) : 0
+    }));
   }
-  document.getElementById('savings-loading').style.display = 'none';
+
+  // Render results
+  const offerCount = aiResults.filter(r => r.biz.offer).length;
+  const totalSavings = aiResults.reduce((sum, r) => sum + r.savings, 0);
+  const summary = `Found ${aiResults.length} operator${aiResults.length !== 1 ? 's' : ''} near ${location}${activity ? ' for ' + activity : ''}.`
+    + (offerCount > 0 ? ` ${offerCount} have Road Trip Pass offers` : '')
+    + (totalSavings > 0 ? ` Group of ${groupSize} saves ~$${totalSavings}.` : '');
+
+  document.getElementById('ai-response').innerHTML =
+    '<div style="line-height:1.65;color:var(--text)">✨ ' + escHtml(summary) + '</div>';
+
+  const list = document.getElementById('ai-results-list');
+  list.innerHTML = '';
+  aiResults.forEach((r, i) => {
+    const row = document.createElement('div');
+    row.className = 'ai-biz-row';
+    row.innerHTML =
+      `<div class="ai-biz-num">${i + 1}</div>`
+      + `<div class="ai-biz-info">`
+      + `<div class="ai-biz-name">${escHtml(r.biz.name)}${r.biz.offer ? '<span class="ai-biz-offer">🎟️ 20% off</span>' : ''}</div>`
+      + `<div class="ai-biz-meta">${escHtml(r.biz.address || '')} · ${escHtml((r.biz.tags || []).slice(0, 3).join(', '))}</div>`
+      + (r.reason ? `<div class="ai-biz-meta" style="font-style:italic;margin-top:2px">${escHtml(r.reason)}</div>` : '')
+      + (r.savings > 0 ? `<div class="ai-biz-saving">~$${r.savings} savings for ${groupSize} people</div>` : '')
+      + `</div>`;
+    row.addEventListener('click', () => {
+      closeAiPanel();
+      if (r.biz.lat && r.biz.lng) {
+        selectBiz(r.biz.id);
+        map.flyTo({ center: [r.biz.lng, r.biz.lat], zoom: 12, duration: 800 });
+      } else if (r.biz.url) window.open(r.biz.url, '_blank');
+    });
+    list.appendChild(row);
+  });
+
+  document.getElementById('ai-show-map').style.display = 'block';
+  document.getElementById('ai-add-route').style.display = 'block';
+
+  // Capture results NOW before any closeAiPanel call clears aiResults
+  const resultsSnapshot = [...aiResults];
+
+  document.getElementById('ai-show-map').onclick = () => {
+    closeAiPanel();
+    const lngs = resultsSnapshot.filter(r => r.biz.lng).map(r => r.biz.lng);
+    const lats = resultsSnapshot.filter(r => r.biz.lat).map(r => r.biz.lat);
+    if (lngs.length) map.fitBounds(
+      [[Math.min(...lngs), Math.min(...lats)], [Math.max(...lngs), Math.max(...lats)]],
+      { padding: 120, duration: 1000, maxZoom: 10 }
+    );
+    resultsSnapshot.forEach(r => {
+      const m = markers[r.biz.id];
+      if (m) {
+        m.el.style.transform = 'scale(2)';
+        m.el.style.zIndex = '50';
+        setTimeout(() => { m.el.style.transform = ''; m.el.style.zIndex = ''; }, 2500);
+      }
+    });
+  };
+
+  document.getElementById('ai-add-route').onclick = () => {
+    closeAiPanel();
+    resultsSnapshot.forEach(r => {
+      if (!routeStops.find(s => s.id === r.biz.id) && r.biz.lat)
+        routeStops.push({ id: r.biz.id, name: r.biz.name, lat: r.biz.lat, lng: r.biz.lng });
+    });
+    document.getElementById('route-panel').style.display = 'block';
+    const sc = document.getElementById('stop-count');
+    sc.textContent = routeStops.length;
+    sc.style.display = 'flex';
+    document.getElementById('route-pill').style.borderColor = 'var(--navy)';
+    updateRoutePlan();
+    if (routeStops.length >= 2) drawRouteFromStops();
+  };
+
+  btn.textContent = '✨ Search';
+  btn.classList.remove('loading');
 }
 
 document.getElementById('download-card').addEventListener('click', () => {
