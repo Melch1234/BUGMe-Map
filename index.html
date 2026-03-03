@@ -142,6 +142,7 @@
 
   <button class="topbar-btn" id="filter-btn" onclick="toggleFilter()">🏷️ Filter <span class="badge" id="filter-badge"></span></button>
   <button class="topbar-btn" id="route-btn" onclick="toggleRoute()">🛣️ Route <span class="badge" id="route-badge"></span></button>
+  <button class="topbar-btn" id="pass-topbar-btn" onclick="togglePassOnly()">🎟️ Pass Offers</button>
   <button class="topbar-btn" onclick="clearAll()">🗑️ Clear</button>
 </div>
 
@@ -214,7 +215,6 @@
 <!-- BOTTOM BAR -->
 <div id="bottombar">
   <div id="biz-count">1,544 operators</div>
-  <button id="pass-toggle" onclick="togglePassOnly()">🎟️ Pass Offers Only</button>
 </div>
 
 <script>
@@ -586,11 +586,13 @@ function toggleStop(bizId) {
   const idx = routeStops.findIndex(s => s.id === bizId);
   if (idx === -1) {
     routeStops.push({id:b.id,name:b.name,lat:b.lat,lng:b.lng,offer:b.offer});
+    // Auto-open route panel so they see savings immediately
+    document.getElementById('route-panel').style.display = 'flex';
   } else {
     routeStops.splice(idx, 1);
   }
   updateRouteBadge();
-  if (document.getElementById('route-panel').style.display === 'flex') renderRoute();
+  renderRoute();
   if (routeStops.length >= 2) drawRouteLine();
   else clearRouteLine();
   // Refresh popup
@@ -721,7 +723,7 @@ function openGoogleMaps() {
 // ── PASS FILTER ────────────────────────────────────────────────────────────
 function togglePassOnly() {
   passOnly = !passOnly;
-  document.getElementById('pass-toggle').classList.toggle('on', passOnly);
+  document.getElementById('pass-topbar-btn').classList.toggle('active', passOnly);
   renderMarkers();
 }
 
