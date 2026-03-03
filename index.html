@@ -392,117 +392,51 @@ document.getElementById('search-input').addEventListener('keydown', e => { if (e
 async function doSearch() {
   const raw = document.getElementById('search-input').value.trim();
   if (!raw) { document.getElementById('search-input').focus(); return; }
-
   const btn = document.getElementById('search-btn');
   btn.textContent = '⏳'; btn.disabled = true;
-
   try {
-    // Step 1: Geocode the search query using Mapbox to get real coordinates
-    const geoResp = await fetch(
-      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(raw)}.json?access_token=${TOKEN}&types=place,region,district,locality&limit=1`
-    );
+    const q = raw.toLowerCase();
+    const geoResp = await fetch('https://api.mapbox.com/geocoding/v5/mapbox.places/' + encodeURIComponent(raw) + '.json?access_token=' + TOKEN + '&types=country,region,district,place,locality&limit=1');
     const geoData = await geoResp.json();
     const feature = geoData.features && geoData.features[0];
-
-    let nearbyBiz = [];
-
+    let candidates = BUSINESSES.filter(b => b.lat && b.lng);
     if (feature) {
-      const [searchLng, searchLat] = feature.center;
-      const searchPlace = feature.place_name;
-      const placeType = (feature.place_type || [])[0]; // country, region, place, etc.
-
-      // Set radius based on how broad the location is
-      // country/region = huge area, use address text matching instead of distance
-      const isLargeArea = ['country','region'].includes(placeType);
-      const radius = isLargeArea ? 99999 : (placeType === 'district' ? 150 : 300);
-
-      const words = raw.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-
-      // For large areas (country/province), match by address text too
-      const locationWords = feature.place_name.toLowerCase().split(/[,\s]+/).filter(w => w.length > 2);
-
-      nearbyBiz = BUSINESSES
-        .filter(b => b.lat && b.lng)
-        .map(b => {
-          const dist = haversine(searchLat, searchLng, b.lat, b.lng);
+      const sLng = feature.center[0], sLat = feature.center[1];
+      const pt = feature.place_type && feature.place_type[0];
+      const pn = feature.place_name;
+      const big = pt === 'country' || pt === 'region';
+      candidates = candidates.filter(b => {
+        if (big) {
           const addr = (b.address||'').toLowerCase();
-          const hay = (b.name+' '+(b.tags||[]).join(' ')).toLowerCase();
-
-          // For large areas: must match location in address text
-          if (isLargeArea) {
-            const addrMatchesLocation = locationWords.some(w => w.length > 3 && addr.includes(w));
-            if (!addrMatchesLocation) return null;
-          } else {
-            if (dist > radius) return null;
-          }
-
-          let actScore = words.reduce((s,w) => s + (hay.includes(w) ? 3 : 0), 0);
-          if (b.offer) actScore += 5;
-          return {b, dist, actScore};
-        })
-        .filter(Boolean)
-        .sort((a,b) => (b.actScore - a.actScore) || (a.dist - b.dist))
-        .slice(0, 60);
-
-      if (nearbyBiz.length === 0) {
-        showResults([], raw);
-        btn.textContent = '✨ Search'; btn.disabled = false;
-        return;
-      }
-
-      // Step 2: Send shortlist to AI for smart ranking
-      const bizList = nearbyBiz.map(({b, dist}) =>
-        `ID:${b.id}|${b.name}|${(b.address||'').replace(/\n/g,' ')}|${(b.tags||[]).slice(0,5).join(',')}|${Math.round(dist)}km away${b.offer?'|PASS_OFFER':''}`
-      ).join('\n');
-
-      const prompt = `Search assistant for BUGMe.Travel (Canada/USA adventure operators).
-Search: "${raw}" — Location resolved to: ${searchPlace}
-
-Pick TOP 6 most relevant operators. Prioritize PASS_OFFER businesses if they match.
-If the activity doesn't match an operator, don't include it.
-Return ONLY JSON: [{"id":123,"reason":"one sentence"}]
-
-Operators within 300km:
-${bizList}`;
-
-      const resp = await fetch('/api/search', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({prompt})
+          return pn.toLowerCase().split(/[\s,]+/).filter(w=>w.length>3).some(w=>addr.includes(w));
+        }
+        const dLat=(b.lat-sLat)*Math.PI/180, dLng=(b.lng-sLng)*Math.PI/180;
+        const a=Math.sin(dLat/2)**2+Math.cos(sLat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
+        return 6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))<=300;
       });
-      if (!resp.ok) throw new Error('api');
-      const data = await resp.json();
-      const picks = JSON.parse((data.text||'').replace(/```json|```/g,'').trim());
-      searchResults = picks.map(p => {
-        const biz = BUSINESSES.find(b => b.id === p.id);
-        return biz ? {biz, reason: p.reason||''} : null;
-      }).filter(Boolean);
-
-    } else {
-      // No location found — treat whole query as activity search across all operators
-      const words = raw.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-      searchResults = BUSINESSES
-        .filter(b => {
-          const hay = (b.name+' '+(b.tags||[]).join(' ')).toLowerCase();
-          return words.some(w => hay.includes(w));
-        })
-        .sort((a,b) => (b.offer?1:0)-(a.offer?1:0))
-        .slice(0,6)
-        .map(b => ({biz:b, reason:''}));
     }
-
+    if (!candidates.length) { searchResults=[]; showResults([],raw); btn.textContent='✨ Search'; btn.disabled=false; return; }
+    const words = q.split(/\s+/).filter(w=>w.length>2);
+    const top20 = candidates.map(b => {
+      const hay=(b.name+' '+(b.tags||[]).join(' ')).toLowerCase();
+      let sc=words.reduce((s,w)=>s+(hay.includes(w)?3:0),0)+(b.offer?5:0);
+      return {b,sc};
+    }).sort((a,b)=>b.sc-a.sc).slice(0,20);
+    const bizList = top20.map(({b})=>'ID:'+b.id+'|'+b.name+'|'+(b.address||'').replace(/\n/g,' ')+'|'+(b.tags||[]).slice(0,5).join(',')+(b.offer?'|PASS_OFFER':'')).join('\n');
+    const prompt = 'Search: "'+raw+'"\nPick TOP 6 most relevant. Prioritize PASS_OFFER. Return ONLY JSON array:\n[{"id":123,"reason":"one sentence"}]\n\n'+bizList;
+    const resp = await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
+    const data = await resp.json();
+    const picks = JSON.parse((data.text||'[]').replace(/```json|```/g,'').trim());
+    searchResults = picks.map(p=>{const biz=BUSINESSES.find(b=>b.id===p.id);return biz?{biz,reason:p.reason||''}:null;}).filter(Boolean);
   } catch(e) {
-    console.warn('Search error:', e.message);
-    const words = raw.toLowerCase().split(/\s+/).filter(w => w.length > 2);
-    searchResults = BUSINESSES.filter(b => {
-      const hay = (b.name+' '+(b.address||'')+' '+(b.tags||[]).join(' ')).toLowerCase();
-      return words.some(w => hay.includes(w));
-    }).sort((a,b) => (b.offer?1:0)-(a.offer?1:0)).slice(0,6).map(b => ({biz:b, reason:''}));
+    console.warn('Search error:',e.message);
+    const words=raw.toLowerCase().split(/\s+/).filter(w=>w.length>2);
+    searchResults=BUSINESSES.filter(b=>{const hay=(b.name+' '+(b.address||'')+' '+(b.tags||[]).join(' ')).toLowerCase();return words.some(w=>hay.includes(w));}).sort((a,b)=>(b.offer?1:0)-(a.offer?1:0)).slice(0,6).map(b=>({biz:b,reason:''}));
   }
-
-  showResults(searchResults, raw);
-  btn.textContent = '✨ Search'; btn.disabled = false;
+  showResults(searchResults,raw);
+  btn.textContent='✨ Search'; btn.disabled=false;
 }
+
 
 function showResults(results, raw) {
   const panel = document.getElementById('results-panel');
