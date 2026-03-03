@@ -735,7 +735,7 @@ function clearAll() {
   activeTags.clear();
   document.querySelectorAll('.ftag').forEach(b => b.classList.remove('on'));
   passOnly = false;
-  document.getElementById('pass-toggle').classList.remove('on');
+  document.getElementById('pass-topbar-btn').classList.remove('active');
   document.getElementById('filter-panel').classList.remove('open');
   updateFilterBadge();
   // Clear search
