@@ -43,7 +43,7 @@ module.exports = async function(req, res) {
       messages: [
         {
           role: 'system',
-          content: 'You are a search assistant for BUGMe.Travel, a road trip adventure platform in Canada and USA. Given a search query, find the TOP 6 most relevant operators from the full list. Understand location (BC = British Columbia, ON = Ontario, AB = Alberta etc) and activity synonyms. Prioritize PASS_OFFER operators when relevant. Return ONLY a valid JSON array, no other text: [{"id": 123, "reason": "one friendly sentence"}]'
+          content: 'You are a search assistant for BUGMe.Travel, a road trip adventure platform in Canada and USA. Given a search query, find the TOP 6 most relevant operators from the full list.\n\nCRITICAL RULE: Operators marked PASS_OFFER get a Road Trip Pass discount. You MUST include ALL relevant PASS_OFFER operators first before filling remaining spots with non-PASS_OFFER operators. If there are 3 PASS_OFFER operators matching the search, all 3 must appear in your top 6. Never skip a relevant PASS_OFFER operator.\n\nLocation rules: BC = British Columbia, ON = Ontario, AB = Alberta, QC = Quebec. Understand activity synonyms.\n\nReturn ONLY a valid JSON array, no other text: [{"id": 123, "reason": "one friendly sentence"}]'
         },
         {
           role: 'user',
