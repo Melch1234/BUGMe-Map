@@ -162,7 +162,10 @@
   </div>
   <div class="filter-bar">
     <span id="filter-summary"></span>
-    <button onclick="clearFilters()">✕ Clear filters</button>
+    <div style="display:flex;gap:8px">
+      <button onclick="clearFilters()">✕ Clear All</button>
+      <button onclick="document.getElementById('filter-panel').classList.remove('open')" style="background:white">Done ✓</button>
+    </div>
   </div>
 </div>
 
@@ -189,7 +192,15 @@
   <div class="panel-scroll" id="route-stops"></div>
   <div id="route-dist" style="display:none"></div>
   <div id="savings-box" style="display:none">
-    <div class="s-label">🎟️ Estimated Pass Savings</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="s-label" style="margin-bottom:0">🎟️ Estimated Pass Savings</div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <span style="font-size:10px;opacity:.6">👥 Group:</span>
+        <button onclick="changeGroup(-1)" style="background:rgba(255,255,255,.15);border:none;color:white;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">−</button>
+        <span id="group-size-display" style="font-size:13px;font-weight:700;min-width:16px;text-align:center">2</span>
+        <button onclick="changeGroup(1)" style="background:rgba(255,255,255,.15);border:none;color:white;width:20px;height:20px;border-radius:50%;cursor:pointer;font-size:14px;line-height:1;display:flex;align-items:center;justify-content:center">+</button>
+      </div>
+    </div>
     <div class="s-total" id="s-total">$0</div>
     <div class="s-note" id="s-note"></div>
     <div id="savings-lines"></div>
@@ -344,7 +355,12 @@ function showPopup(b) {
   const tags = (b.tags || []).slice(0, 5).map(t => `<span class="pu-tag">${esc(t)}</span>`).join('');
   const inRoute = !!routeStops.find(s => s.id === b.id);
 
+  const photoHtml = b.photo
+    ? `<div style="width:100%;height:120px;background:url('${b.photo}') center/cover no-repeat"></div>`
+    : `<div style="width:100%;height:80px;background:linear-gradient(135deg,#1a3a5c,#2a6496);display:flex;align-items:center;justify-content:center;font-size:28px">🌲</div>`;
+
   const html = `
+    ${photoHtml}
     <div class="pu-inner">
       <button class="pu-x" onclick="closePopup()">✕</button>
       <div class="pu-name">${esc(b.name)}</div>
@@ -380,56 +396,106 @@ async function doSearch() {
   const btn = document.getElementById('search-btn');
   btn.textContent = '⏳'; btn.disabled = true;
 
-  // Build a compact list of ALL businesses for AI
-  // Only exclude the 4 international ones (africa/portugal) unless query mentions them
-  const q = raw.toLowerCase();
-  const INTL = new Set([12,17,1293,16]);
-  const wantsIntl = ['africa','kenya','madagascar','portugal','europe','zambia'].some(w => q.includes(w));
-
-  const allBiz = BUSINESSES
-    .filter(b => b.lat && b.lng && (wantsIntl || !INTL.has(b.id)))
-    .map(b => `ID:${b.id}|${b.name}|${(b.address||'').replace(/\n/g,' ')}|${(b.tags||[]).slice(0,5).join(',')}${b.offer?'|PASS_OFFER':''}`)
-    .join('\n');
-
   try {
-    const prompt = `You are a search assistant for BUGMe.Travel, a road trip platform with 1,500+ adventure operators across Canada and the USA.
+    // Step 1: Geocode the search query using Mapbox to get real coordinates
+    const geoResp = await fetch(
+      `https://api.mapbox.com/geocoding/v5/mapbox.places/${encodeURIComponent(raw)}.json?access_token=${TOKEN}&types=place,region,district,locality&limit=1`
+    );
+    const geoData = await geoResp.json();
+    const feature = geoData.features && geoData.features[0];
 
-A traveler searched for: "${raw}"
+    let nearbyBiz = [];
 
-From the operators list below, find the TOP 6 that best match this search. Use your understanding of geography and activities — you don't need explicit keywords to match. For example "kayak in ontario" should find kayaking businesses in Ontario, Canada even if the word "ontario" appears differently in the address (like "ON, Canada").
+    if (feature) {
+      const [searchLng, searchLat] = feature.center;
+      const searchPlace = feature.place_name;
+      const placeType = (feature.place_type || [])[0]; // country, region, place, etc.
 
-IMPORTANT: Always include any operator marked PASS_OFFER that is relevant to the search — these businesses offer 20% discounts and should be prioritized.
+      // Set radius based on how broad the location is
+      // country/region = huge area, use address text matching instead of distance
+      const isLargeArea = ['country','region'].includes(placeType);
+      const radius = isLargeArea ? 99999 : (placeType === 'district' ? 150 : 300);
 
-If no operators genuinely match the search, return an empty array [].
+      const words = raw.toLowerCase().split(/\s+/).filter(w => w.length > 2);
 
-Return ONLY a JSON array (no markdown, no other text):
-[{"id":123,"reason":"one sentence why this fits the search"}]
+      // For large areas (country/province), match by address text too
+      const locationWords = feature.place_name.toLowerCase().split(/[,\s]+/).filter(w => w.length > 2);
 
-Operators:
-${allBiz}`;
+      nearbyBiz = BUSINESSES
+        .filter(b => b.lat && b.lng)
+        .map(b => {
+          const dist = haversine(searchLat, searchLng, b.lat, b.lng);
+          const addr = (b.address||'').toLowerCase();
+          const hay = (b.name+' '+(b.tags||[]).join(' ')).toLowerCase();
 
-    const resp = await fetch('/api/search', {
-      method: 'POST',
-      headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({prompt})
-    });
+          // For large areas: must match location in address text
+          if (isLargeArea) {
+            const addrMatchesLocation = locationWords.some(w => w.length > 3 && addr.includes(w));
+            if (!addrMatchesLocation) return null;
+          } else {
+            if (dist > radius) return null;
+          }
 
-    if (!resp.ok) throw new Error('api ' + resp.status);
-    const data = await resp.json();
-    const text = (data.text || '').replace(/```json|```/g, '').trim();
-    const picks = JSON.parse(text);
+          let actScore = words.reduce((s,w) => s + (hay.includes(w) ? 3 : 0), 0);
+          if (b.offer) actScore += 5;
+          return {b, dist, actScore};
+        })
+        .filter(Boolean)
+        .sort((a,b) => (b.actScore - a.actScore) || (a.dist - b.dist))
+        .slice(0, 60);
 
-    searchResults = picks.map(p => {
-      const biz = BUSINESSES.find(b => b.id === p.id);
-      return biz ? {biz, reason: p.reason || ''} : null;
-    }).filter(Boolean);
+      if (nearbyBiz.length === 0) {
+        showResults([], raw);
+        btn.textContent = '✨ Search'; btn.disabled = false;
+        return;
+      }
+
+      // Step 2: Send shortlist to AI for smart ranking
+      const bizList = nearbyBiz.map(({b, dist}) =>
+        `ID:${b.id}|${b.name}|${(b.address||'').replace(/\n/g,' ')}|${(b.tags||[]).slice(0,5).join(',')}|${Math.round(dist)}km away${b.offer?'|PASS_OFFER':''}`
+      ).join('\n');
+
+      const prompt = `Search assistant for BUGMe.Travel (Canada/USA adventure operators).
+Search: "${raw}" — Location resolved to: ${searchPlace}
+
+Pick TOP 6 most relevant operators. Prioritize PASS_OFFER businesses if they match.
+If the activity doesn't match an operator, don't include it.
+Return ONLY JSON: [{"id":123,"reason":"one sentence"}]
+
+Operators within 300km:
+${bizList}`;
+
+      const resp = await fetch('/api/search', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({prompt})
+      });
+      if (!resp.ok) throw new Error('api');
+      const data = await resp.json();
+      const picks = JSON.parse((data.text||'').replace(/```json|```/g,'').trim());
+      searchResults = picks.map(p => {
+        const biz = BUSINESSES.find(b => b.id === p.id);
+        return biz ? {biz, reason: p.reason||''} : null;
+      }).filter(Boolean);
+
+    } else {
+      // No location found — treat whole query as activity search across all operators
+      const words = raw.toLowerCase().split(/\s+/).filter(w => w.length > 2);
+      searchResults = BUSINESSES
+        .filter(b => {
+          const hay = (b.name+' '+(b.tags||[]).join(' ')).toLowerCase();
+          return words.some(w => hay.includes(w));
+        })
+        .sort((a,b) => (b.offer?1:0)-(a.offer?1:0))
+        .slice(0,6)
+        .map(b => ({biz:b, reason:''}));
+    }
 
   } catch(e) {
-    console.warn('AI search failed:', e.message);
-    // Simple fallback - just text match
-    const words = q.split(/\s+/).filter(w => w.length > 2);
+    console.warn('Search error:', e.message);
+    const words = raw.toLowerCase().split(/\s+/).filter(w => w.length > 2);
     searchResults = BUSINESSES.filter(b => {
-      const hay = (b.name + ' ' + (b.address||'') + ' ' + (b.tags||[]).join(' ')).toLowerCase();
+      const hay = (b.name+' '+(b.address||'')+' '+(b.tags||[]).join(' ')).toLowerCase();
       return words.some(w => hay.includes(w));
     }).sort((a,b) => (b.offer?1:0)-(a.offer?1:0)).slice(0,6).map(b => ({biz:b, reason:''}));
   }
@@ -630,6 +696,7 @@ function clearRoute() {
   updateRouteBadge();
   renderRoute();
   clearRouteLine();
+  resetMapView();
 }
 
 function updateRouteBadge() {
@@ -637,6 +704,12 @@ function updateRouteBadge() {
   badge.textContent = routeStops.length;
   badge.style.display = routeStops.length > 0 ? 'inline' : 'none';
   document.getElementById('route-btn').classList.toggle('active', routeStops.length > 0);
+}
+
+function changeGroup(delta) {
+  groupSize = Math.max(1, Math.min(20, groupSize + delta));
+  document.getElementById('group-size-display').textContent = groupSize;
+  renderRoute();
 }
 
 function openGoogleMaps() {
@@ -671,9 +744,14 @@ function clearAll() {
   clearRoute();
   // Re-render
   renderMarkers();
+  resetMapView();
 }
 
-// ── HELPERS ────────────────────────────────────────────────────────────────
+// ── HELPERS ─────────────────────────────────────────────────────────────
+function resetMapView() {
+  map.flyTo({center: [-100, 50], zoom: 2.2, duration: 1000});
+}
+
 function esc(s) {
   return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
 }
