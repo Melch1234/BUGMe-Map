@@ -8,16 +8,10 @@
 <script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-
-/* MAP */
 #map{position:fixed;top:52px;left:0;right:0;bottom:0}
-
-/* LOADING */
 #loading{position:fixed;inset:0;z-index:999;background:#1a3a5c;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:12px;color:white}
 #loading .bug{font-size:48px;animation:bob 1s ease-in-out infinite}
 @keyframes bob{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
-
-/* TOP BAR */
 #topbar{position:fixed;top:0;left:0;right:0;height:52px;z-index:300;background:white;border-bottom:1px solid #e5ddd5;display:flex;align-items:center;gap:8px;padding:0 12px;box-shadow:0 2px 8px rgba(0,0,0,0.08)}
 #logo{font-size:13px;font-weight:800;color:#1a3a5c;white-space:nowrap;flex-shrink:0}
 #logo span{color:#e07b39}
@@ -27,18 +21,14 @@
 #search-btn{background:#1a3a5c;color:white;border:none;border-radius:6px;padding:5px 12px;font-size:12px;font-weight:700;cursor:pointer;white-space:nowrap;transition:background .2s}
 #search-btn:hover{background:#2a5080}
 #search-btn:disabled{opacity:0.6;cursor:not-allowed}
-
 .topbar-btn{background:white;border:1.5px solid #ddd;border-radius:20px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:all .15s;flex-shrink:0}
 .topbar-btn:hover{border-color:#1a3a5c;color:#1a3a5c}
 .topbar-btn.active{background:#1a3a5c;color:white;border-color:#1a3a5c}
 #filter-btn .badge,#route-btn .badge{background:#e07b39;color:white;border-radius:10px;padding:1px 5px;font-size:10px;display:none}
-
-/* FILTER DROPDOWN */
 #filter-panel{position:fixed;top:52px;left:50%;transform:translateX(-50%);width:700px;max-width:calc(100vw - 20px);background:#faf8f5;border:1px solid #e5ddd5;border-radius:0 0 16px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.12);z-index:200;padding:16px;max-height:75vh;overflow-y:auto;display:none}
 #filter-panel.open{display:block}
 .fg-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
 @media(max-width:580px){.fg-grid{grid-template-columns:repeat(2,1fr)}}
-.fg-section{}
 .fg-label{font-size:9px;font-weight:700;letter-spacing:.1em;text-transform:uppercase;color:#aaa;margin-bottom:6px}
 .fg-tags{display:flex;flex-wrap:wrap;gap:4px}
 .ftag{padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500;border:1px solid #ddd;background:white;color:#666;cursor:pointer;white-space:nowrap;transition:all .15s}
@@ -48,15 +38,11 @@
 .filter-bar span{font-size:11px;color:#aaa}
 .filter-bar button{padding:4px 12px;border-radius:20px;border:1px solid #ddd;background:#f0ebe5;font-size:11px;cursor:pointer;font-weight:600}
 .filter-bar button:hover{background:#e5ddd5}
-
-/* PANELS */
 .side-panel{position:fixed;top:62px;z-index:250;background:white;border-radius:12px;box-shadow:0 4px 24px rgba(0,0,0,0.14);display:none;flex-direction:column;max-height:calc(100vh - 80px);overflow:hidden}
 .panel-head{display:flex;align-items:center;justify-content:space-between;padding:12px 16px;border-bottom:1px solid #f0ebe5;font-size:13px;font-weight:700;color:#1a3a5c;flex-shrink:0}
 .panel-close{background:none;border:none;font-size:18px;cursor:pointer;color:#aaa;line-height:1;padding:0 2px}
 .panel-close:hover{color:#333}
 .panel-scroll{overflow-y:auto;flex:1}
-
-/* RESULTS PANEL */
 #results-panel{left:12px;width:310px}
 .result-summary{padding:8px 16px;font-size:12px;color:#888;background:#faf8f5;border-bottom:1px solid #f0ebe5;flex-shrink:0}
 .biz-row{display:flex;gap:10px;padding:11px 16px;cursor:pointer;border-bottom:1px solid #f5f0eb;transition:background .15s;align-items:flex-start}
@@ -71,8 +57,6 @@
 .panel-actions button{flex:1;padding:7px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer}
 .btn-navy{background:#1a3a5c;color:white}.btn-navy:hover{background:#2a5080}
 .btn-grey{background:#f0ebe5;color:#1a3a5c}.btn-grey:hover{background:#e5ddd5}
-
-/* ROUTE PANEL */
 #route-panel{right:12px;width:290px}
 .stop-row{display:flex;align-items:center;gap:8px;padding:10px 16px;border-bottom:1px solid #f5f0eb}
 .stop-num{width:22px;height:22px;border-radius:50%;background:#e07b39;color:white;font-size:10px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
@@ -91,8 +75,6 @@
 .saving-line strong{font-size:12px;color:#4db8a0}
 .route-actions{display:flex;gap:8px;padding:10px 16px;border-top:1px solid #f0ebe5;flex-shrink:0}
 .route-actions button{flex:1;padding:7px;border-radius:8px;border:none;font-size:11px;font-weight:700;cursor:pointer}
-
-/* POPUP */
 .mapboxgl-popup-content{border-radius:12px;padding:0;overflow:hidden;box-shadow:0 4px 20px rgba(0,0,0,0.15);min-width:230px}
 .pu-inner{padding:13px 13px 10px;position:relative}
 .pu-x{position:absolute;top:8px;right:8px;background:#f0ebe5;border:none;border-radius:50%;width:22px;height:22px;font-size:11px;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#777;line-height:1}
@@ -107,39 +89,26 @@
 .pu-btns button{flex:1;padding:9px;border:none;background:none;font-size:11px;font-weight:600;color:#1a3a5c;cursor:pointer;border-right:1px solid #f0ebe5;font-family:inherit}
 .pu-btns button:last-child{border-right:none}
 .pu-btns button:hover{background:#faf8f5}
-
-/* MARKERS */
 .pin{width:14px;height:14px;border-radius:50%;border:2.5px solid white;box-shadow:0 2px 6px rgba(0,0,0,0.3);cursor:pointer;transition:transform .15s}
 .pin:hover{transform:scale(1.6)}
 .pin.offer{background:#e07b39;width:16px;height:16px}
 .pin.regular{background:#2a6496}
 .pin.lit{transform:scale(2.2);z-index:10}
 .rpin{width:26px;height:26px;border-radius:50%;background:#e07b39;border:2.5px solid white;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
-
-/* BOTTOM BAR */
 #bottombar{position:fixed;bottom:16px;left:12px;z-index:100;display:flex;gap:8px;align-items:center}
 #biz-count{background:white;border-radius:20px;padding:5px 12px;font-size:11px;color:#888;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
-#pass-toggle{background:white;border:1.5px solid #ddd;border-radius:20px;padding:5px 12px;font-size:11px;font-weight:600;cursor:pointer;box-shadow:0 2px 8px rgba(0,0,0,0.1);transition:all .15s}
-#pass-toggle.on{background:#e07b39;color:white;border-color:#e07b39}
-
 .mapboxgl-ctrl-bottom-right{bottom:56px!important}
 </style>
 </head>
 <body>
-
 <div id="loading"><div class="bug">🐞</div><div style="font-size:22px;font-weight:800">BUGMe</div><p style="opacity:.6;font-size:13px">Loading map…</p></div>
-
 <div id="map"></div>
-
-<!-- TOP BAR -->
 <div id="topbar">
   <div id="logo">🐞Bug<span>Me</span>.Travel</div>
-
   <div id="search-box">
-    <input id="search-input" type="text" placeholder="🔍 e.g. rafting near Banff, kayaking Whistler…" autocomplete="off">
+    <input id="search-input" type="text" placeholder="🔍  e.g. rafting near Banff, kayaking in Ontario…" autocomplete="off">
     <button id="search-btn" onclick="doSearch()">✨ Search</button>
   </div>
-
   <button class="topbar-btn" id="filter-btn" onclick="toggleFilter()">🏷️ Filter <span class="badge" id="filter-badge"></span></button>
   <button class="topbar-btn" id="route-btn" onclick="toggleRoute()">🛣️ Route <span class="badge" id="route-badge"></span></button>
   <button class="topbar-btn" id="pass-topbar-btn" onclick="togglePassOnly()">🎟️ Pass Offers</button>
@@ -150,16 +119,16 @@
 <div id="filter-panel">
   <div class="fg-grid">
     <div class="fg-section"><div class="fg-label">🌊 Water</div><div class="fg-tags" id="fg-water"></div></div>
-    <div class="fg-section"><div class="fg-label">⛰️ Land & Trails</div><div class="fg-tags" id="fg-land"></div></div>
-    <div class="fg-section"><div class="fg-label">❄️ Snow & Air</div><div class="fg-tags" id="fg-snow"></div></div>
-    <div class="fg-section"><div class="fg-label">🌿 Nature & Wildlife</div><div class="fg-tags" id="fg-nature"></div></div>
-    <div class="fg-section"><div class="fg-label">🧭 Tours & Experiences</div><div class="fg-tags" id="fg-tours"></div></div>
+    <div class="fg-section"><div class="fg-label">⛰️ Land &amp; Trails</div><div class="fg-tags" id="fg-land"></div></div>
+    <div class="fg-section"><div class="fg-label">❄️ Snow &amp; Air</div><div class="fg-tags" id="fg-snow"></div></div>
+    <div class="fg-section"><div class="fg-label">🌿 Nature &amp; Wildlife</div><div class="fg-tags" id="fg-nature"></div></div>
+    <div class="fg-section"><div class="fg-label">🧭 Tours &amp; Experiences</div><div class="fg-tags" id="fg-tours"></div></div>
     <div class="fg-section"><div class="fg-label">🗺️ Terrain</div><div class="fg-tags" id="fg-terrain"></div></div>
     <div class="fg-section"><div class="fg-label">👨‍👩‍👧 Who</div><div class="fg-tags" id="fg-who"></div></div>
     <div class="fg-section"><div class="fg-label">⏱️ Duration</div><div class="fg-tags" id="fg-duration"></div></div>
     <div class="fg-section"><div class="fg-label">🌤️ Season</div><div class="fg-tags" id="fg-season"></div></div>
     <div class="fg-section"><div class="fg-label">💪 Level</div><div class="fg-tags" id="fg-level"></div></div>
-    <div class="fg-section"><div class="fg-label">🏕️ Stay & More</div><div class="fg-tags" id="fg-stay"></div></div>
+    <div class="fg-section"><div class="fg-label">🏕️ Stay &amp; More</div><div class="fg-tags" id="fg-stay"></div></div>
   </div>
   <div class="filter-bar">
     <span id="filter-summary"></span>
@@ -212,10 +181,7 @@
   </div>
 </div>
 
-<!-- BOTTOM BAR -->
-<div id="bottombar">
-  <div id="biz-count">1,544 operators</div>
-</div>
+<div id="bottombar"><div id="biz-count">1,544 operators</div></div>
 
 <script>
 // ── DATA ────────────────────────────────────────────────────────────────
@@ -389,54 +355,35 @@ map.on('click', closePopup);
 // ── SEARCH ────────────────────────────────────────────────────────────────
 document.getElementById('search-input').addEventListener('keydown', e => { if (e.key === 'Enter') doSearch(); });
 
-async function doSearch() {
-  const raw = document.getElementById('search-input').value.trim();
-  if (!raw) { document.getElementById('search-input').focus(); return; }
-  const btn = document.getElementById('search-btn');
-  btn.textContent = '⏳'; btn.disabled = true;
-  try {
-    const q = raw.toLowerCase();
-    const geoResp = await fetch('https://api.mapbox.com/geocoding/v5/mapbox.places/' + encodeURIComponent(raw) + '.json?access_token=' + TOKEN + '&types=country,region,district,place,locality&limit=1');
-    const geoData = await geoResp.json();
-    const feature = geoData.features && geoData.features[0];
-    let candidates = BUSINESSES.filter(b => b.lat && b.lng);
-    if (feature) {
-      const sLng = feature.center[0], sLat = feature.center[1];
-      const pt = feature.place_type && feature.place_type[0];
-      const pn = feature.place_name;
-      const big = pt === 'country' || pt === 'region';
-      candidates = candidates.filter(b => {
-        if (big) {
-          const addr = (b.address||'').toLowerCase();
-          return pn.toLowerCase().split(/[\s,]+/).filter(w=>w.length>3).some(w=>addr.includes(w));
-        }
-        const dLat=(b.lat-sLat)*Math.PI/180, dLng=(b.lng-sLng)*Math.PI/180;
-        const a=Math.sin(dLat/2)**2+Math.cos(sLat*Math.PI/180)*Math.cos(b.lat*Math.PI/180)*Math.sin(dLng/2)**2;
-        return 6371*2*Math.atan2(Math.sqrt(a),Math.sqrt(1-a))<=300;
-      });
-    }
-    if (!candidates.length) { searchResults=[]; showResults([],raw); btn.textContent='✨ Search'; btn.disabled=false; return; }
-    const words = q.split(/\s+/).filter(w=>w.length>2);
-    const top20 = candidates.map(b => {
-      const hay=(b.name+' '+(b.tags||[]).join(' ')).toLowerCase();
-      let sc=words.reduce((s,w)=>s+(hay.includes(w)?3:0),0)+(b.offer?5:0);
-      return {b,sc};
-    }).sort((a,b)=>b.sc-a.sc).slice(0,20);
-    const bizList = top20.map(({b})=>'ID:'+b.id+'|'+b.name+'|'+(b.address||'').replace(/\n/g,' ')+'|'+(b.tags||[]).slice(0,5).join(',')+(b.offer?'|PASS_OFFER':'')).join('\n');
-    const prompt = 'Search: "'+raw+'"\nPick TOP 6 most relevant. Prioritize PASS_OFFER. Return ONLY JSON array:\n[{"id":123,"reason":"one sentence"}]\n\n'+bizList;
-    const resp = await fetch('/api/search',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({prompt})});
-    const data = await resp.json();
-    const picks = JSON.parse((data.text||'[]').replace(/```json|```/g,'').trim());
-    searchResults = picks.map(p=>{const biz=BUSINESSES.find(b=>b.id===p.id);return biz?{biz,reason:p.reason||''}:null;}).filter(Boolean);
-  } catch(e) {
-    console.warn('Search error:',e.message);
-    const words=raw.toLowerCase().split(/\s+/).filter(w=>w.length>2);
-    searchResults=BUSINESSES.filter(b=>{const hay=(b.name+' '+(b.address||'')+' '+(b.tags||[]).join(' ')).toLowerCase();return words.some(w=>hay.includes(w));}).sort((a,b)=>(b.offer?1:0)-(a.offer?1:0)).slice(0,6).map(b=>({biz:b,reason:''}));
-  }
-  showResults(searchResults,raw);
-  btn.textContent='✨ Search'; btn.disabled=false;
-}
 
+// ── SEARCH ────────────────────────────────────────────────────────────────
+document.getElementById('search-input').addEventListener('keydown', function(e) { if (e.key === 'Enter') doSearch(); });
+
+async function doSearch() {
+  var raw = document.getElementById('search-input').value.trim();
+  if (!raw) { document.getElementById('search-input').focus(); return; }
+  var btn = document.getElementById('search-btn');
+  btn.textContent = '⏳'; btn.disabled = true;
+
+  try {
+    var resp = await fetch('/api/search', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({query: raw})
+    });
+    var data = await resp.json();
+    var picks = JSON.parse((data.text || '[]').replace(/```json|```/g, '').trim());
+    searchResults = picks.map(function(p) {
+      var biz = BUSINESSES.find(function(b) { return b.id === p.id; });
+      return biz ? {biz: biz, reason: p.reason || ''} : null;
+    }).filter(Boolean);
+  } catch(e) {
+    searchResults = [];
+  }
+
+  showResults(searchResults, raw);
+  btn.textContent = '✨ Search'; btn.disabled = false;
+}
 
 function showResults(results, raw) {
   const panel = document.getElementById('results-panel');
@@ -707,6 +654,7 @@ function avgPrice(b) {
   if (t.includes('shuttle')||t.includes('transport')) return 40;
   return 120;
 }
+
 </script>
 </body>
 </html>
