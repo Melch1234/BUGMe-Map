@@ -1,4 +1,5 @@
-// api/generate.js - Run once to generate embeddings
+// api/generate.js
+// Called in chunks of 50 businesses at a time to avoid timeout
 const https = require('https');
 
 function httpsPost(url, data, headers) {
@@ -25,24 +26,33 @@ module.exports = async (req, res) => {
   if (req.method === 'OPTIONS') return res.status(200).end();
 
   const OPENAI_KEY = process.env.OPENAI_API_KEY;
-  if (!OPENAI_KEY) return res.status(500).json({error: 'OPENAI_API_KEY not set'});
+  if (!OPENAI_KEY) return res.status(500).json({error: 'OPENAI_API_KEY not set in Vercel environment variables'});
 
   const { businesses } = req.body || {};
   if (!businesses?.length) return res.status(400).json({error: 'No businesses sent'});
 
-  const embeddings = {};
-  for (let i = 0; i < businesses.length; i += 100) {
-    const batch = businesses.slice(i, i + 100);
-    const texts = batch.map(b => `${b.name}. ${(b.address||'')}. ${(b.tags||[]).join(', ')}.`);
-    try {
-      const r = await httpsPost('https://api.openai.com/v1/embeddings',
-        {model:'text-embedding-3-small', input:texts},
-        {'Authorization':`Bearer ${OPENAI_KEY}`}
-      );
-      if (r.status === 200) r.body.data.forEach((item,idx) => { embeddings[batch[idx].id] = item.embedding; });
-      else console.error('Batch failed:', r.body?.error?.message);
-    } catch(e) { console.error('Batch error:', e.message); }
-  }
+  // Process just this chunk (should be ~50 businesses)
+  const texts = businesses.map(b => `${b.name}. ${(b.address||'')}. ${(b.tags||[]).join(', ')}.`);
 
-  res.status(200).json({embeddings, count: Object.keys(embeddings).length});
+  try {
+    const r = await httpsPost(
+      'https://api.openai.com/v1/embeddings',
+      {model: 'text-embedding-3-small', input: texts},
+      {'Authorization': `Bearer ${OPENAI_KEY}`}
+    );
+
+    if (r.status !== 200) {
+      return res.status(500).json({error: r.body?.error?.message || 'OpenAI error'});
+    }
+
+    const embeddings = {};
+    r.body.data.forEach((item, idx) => {
+      embeddings[businesses[idx].id] = item.embedding;
+    });
+
+    return res.status(200).json({embeddings, count: Object.keys(embeddings).length});
+
+  } catch(e) {
+    return res.status(500).json({error: e.message});
+  }
 };
