@@ -5,7 +5,88 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>BUGMe – Road Trip Pass Map</title>
 <link href="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.css" rel="stylesheet">
-<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js"></script>
+<script src="https://api.mapbox.com/mapbox-gl-js/v3.3.0/mapbox-gl.js">
+
+// ── SUBMIT TRIP ───────────────────────────────────────────────────────────
+let tripPhotos = [];
+
+function handlePhotos(input) {
+  const files = Array.from(input.files).slice(0, 3);
+  tripPhotos = files;
+  const preview = document.getElementById('photo-preview');
+  preview.innerHTML = '';
+  files.forEach(f => {
+    const img = document.createElement('img');
+    img.className = 'photo-thumb';
+    img.src = URL.createObjectURL(f);
+    preview.appendChild(img);
+  });
+  document.querySelector('.photo-upload-label').textContent = files.length + ' photo' + (files.length > 1 ? 's' : '') + ' selected';
+}
+
+function updateRouteTagsPreview() {
+  const el = document.getElementById('route-tags-preview');
+  if (!el) return;
+  if (routeStops.length === 0) {
+    el.innerHTML = '<span style="font-size:11px;color:#aaa">No stops yet</span>';
+    return;
+  }
+  el.innerHTML = routeStops.map(s =>
+    '<span class="route-preview-tag">' + (s.offer ? '🎟️ ' : '📍 ') + s.name + '</span>'
+  ).join('');
+}
+
+async function submitTrip() {
+  const name = document.getElementById('trip-name-input').value.trim();
+  const author = document.getElementById('trip-author-input').value.trim();
+  const desc = document.getElementById('trip-desc-input').value.trim();
+
+  if (!name) { alert('Please add a trip name!'); return; }
+  if (!author) { alert('Please add your name for credit!'); return; }
+  if (routeStops.length < 2) { alert('Add at least 2 stops to your route!'); return; }
+
+  const btn = document.querySelector('.submit-btn');
+  btn.disabled = true;
+  btn.textContent = 'Sending...';
+
+  const stopsList = routeStops.map((s,i) => (i+1) + '. ' + s.name + (s.offer ? ' 🎟️' : '')).join('\n');
+  const shareUrl = window.location.origin + window.location.pathname + '?stops=' + routeStops.map(s=>s.id).join(',');
+
+  // Build mailto
+  const subject = encodeURIComponent('New Trip Submission: ' + name);
+  const body = encodeURIComponent(
+    'TRIP NAME: ' + name + '\n' +
+    'SUBMITTED BY: ' + author + '\n\n' +
+    'STOPS:\n' + stopsList + '\n\n' +
+    'DESCRIPTION:\n' + (desc || 'No description provided') + '\n\n' +
+    'SHARE LINK:\n' + shareUrl + '\n\n' +
+    'TRAVELLERS IN GROUP: ' + tripPax + '\n\n' +
+    (tripPhotos.length > 0 ? 'PHOTOS: ' + tripPhotos.length + ' photo(s) attached (please attach manually from your device)' : 'No photos')
+  );
+
+  window.location.href = 'mailto:fun@bugme.travel?subject=' + subject + '&body=' + body;
+
+  // Show success after short delay
+  setTimeout(() => {
+    document.getElementById('submit-form').style.display = 'none';
+    document.getElementById('submit-success').style.display = 'block';
+    btn.disabled = false;
+    btn.textContent = '🚀 Submit My Trip';
+  }, 1000);
+}
+
+function resetSubmitForm() {
+  document.getElementById('submit-form').style.display = 'flex';
+  document.getElementById('submit-success').style.display = 'none';
+  document.getElementById('trip-name-input').value = '';
+  document.getElementById('trip-author-input').value = '';
+  document.getElementById('trip-desc-input').value = '';
+  document.getElementById('photo-preview').innerHTML = '';
+  document.querySelector('.photo-upload-label').textContent = '📷 Tap to add photos';
+  tripPhotos = [];
+}
+
+</script>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
 #map{position:fixed;top:52px;left:0;right:0;bottom:0}
@@ -24,6 +105,7 @@
 .topbar-btn{background:white;border:1.5px solid #ddd;border-radius:20px;padding:5px 11px;font-size:11px;font-weight:600;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:4px;transition:all .15s;flex-shrink:0}
 .topbar-btn:hover{border-color:#1a3a5c;color:#1a3a5c}
 .topbar-btn.active{background:#1a3a5c;color:white;border-color:#1a3a5c}
+#pass-topbar-btn.active{background:#e07b39;color:white;border-color:#e07b39}
 #filter-btn .badge,#route-btn .badge{background:#e07b39;color:white;border-radius:10px;padding:1px 5px;font-size:10px;display:none}
 #filter-panel{position:fixed;top:52px;left:50%;transform:translateX(-50%);width:700px;max-width:calc(100vw - 20px);background:#faf8f5;border:1px solid #e5ddd5;border-radius:0 0 16px 16px;box-shadow:0 8px 30px rgba(0,0,0,0.12);z-index:200;padding:16px;max-height:75vh;overflow-y:auto;display:none}
 #filter-panel.open{display:block}
@@ -98,6 +180,67 @@
 #bottombar{position:fixed;bottom:16px;left:12px;z-index:100;display:flex;gap:8px;align-items:center}
 #biz-count{background:white;border-radius:20px;padding:5px 12px;font-size:11px;color:#888;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .mapboxgl-ctrl-bottom-right{bottom:56px!important}
+
+
+/* ── TRIPS PANEL ─────────────────────────────────────────────────────── */
+#trips-panel{top:52px;right:12px;width:310px}
+#trips-panel .panel-head{margin-bottom:0}
+.trips-section-label{font-size:10px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;color:#aaa;margin:14px 0 8px}
+.pax-row{display:flex;align-items:center;gap:8px;background:#f5f0eb;border-radius:10px;padding:8px 12px;margin-bottom:4px}
+.pax-label{font-size:12px;color:#555;flex:1}
+.pax-ctrl{display:flex;align-items:center;gap:8px}
+.pax-btn{width:26px;height:26px;border-radius:50%;border:1.5px solid #ddd;background:white;font-size:14px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;color:#1a3a5c;transition:all .15s;flex-shrink:0}
+.pax-btn:hover{border-color:#e07b39;color:#e07b39}
+.pax-num{font-size:16px;font-weight:800;color:#1a3a5c;min-width:20px;text-align:center}
+.icard{background:white;border:1.5px solid #eee;border-radius:12px;margin-bottom:10px;overflow:hidden;cursor:pointer;transition:border-color .15s,box-shadow .15s}
+.icard:hover{border-color:#e07b39;box-shadow:0 4px 16px rgba(224,123,57,0.15)}
+.icard.active{border-color:#e07b39;box-shadow:0 4px 16px rgba(224,123,57,0.2)}
+.icard-head{display:flex;align-items:center;gap:10px;padding:12px 14px 8px}
+.icard-emoji{font-size:22px;flex-shrink:0}
+.icard-info{flex:1;min-width:0}
+.icard-title{font-size:13px;font-weight:700;color:#1a3a5c;margin-bottom:2px}
+.icard-route{font-size:10px;color:#999}
+.icard-stops{padding:0 14px 8px;display:flex;flex-direction:column;gap:4px}
+.icard-stop{display:flex;align-items:center;gap:7px;font-size:11px;color:#555}
+.icard-num{width:16px;height:16px;border-radius:50%;background:#1a3a5c;color:white;font-size:8px;font-weight:700;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.icard-num.o{background:#e07b39}
+.icard-sname{white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.icard-foot{display:flex;align-items:center;justify-content:space-between;padding:8px 14px 12px;border-top:1px solid #f5f0eb}
+.icard-save{font-size:12px;font-weight:700;color:#2d5a3d}
+.icard-load{background:#1a3a5c;color:white;border:none;border-radius:8px;padding:6px 14px;font-size:11px;font-weight:700;cursor:pointer;transition:background .15s}
+.icard-load:hover{background:#e07b39}
+.share-box{background:#f5f0eb;border-radius:12px;padding:14px;margin-bottom:10px}
+.share-box p{font-size:11px;color:#666;margin-bottom:10px;line-height:1.5}
+.share-empty{font-size:11px;color:#aaa;text-align:center;padding:16px 0}
+.share-input{width:100%;border:1.5px solid #ddd;border-radius:8px;padding:7px 10px;font-size:11px;color:#333;background:white;margin-bottom:8px;font-family:monospace}
+.share-input:focus{outline:none;border-color:#1a3a5c}
+.share-btns{display:flex;gap:6px}
+.share-copy{flex:1;background:#1a3a5c;color:white;border:none;border-radius:8px;padding:7px;font-size:11px;font-weight:700;cursor:pointer;transition:background .15s}
+.share-copy:hover{background:#e07b39}
+.share-copy.copied{background:#2d5a3d}
+.share-wa{background:#25d366;color:white;border:none;border-radius:8px;padding:7px 10px;font-size:11px;font-weight:700;cursor:pointer}
+
+
+.submit-form{display:flex;flex-direction:column;gap:8px}
+.submit-field{display:flex;flex-direction:column;gap:4px}
+.submit-field label{font-size:10px;font-weight:700;color:#888;text-transform:uppercase;letter-spacing:0.8px}
+.submit-field input,.submit-field textarea{border:1.5px solid #ddd;border-radius:8px;padding:8px 10px;font-size:12px;color:#333;font-family:inherit;outline:none;transition:border-color .15s;background:white}
+.submit-field input:focus,.submit-field textarea:focus{border-color:#1a3a5c}
+.submit-field textarea{resize:vertical;min-height:70px;line-height:1.5}
+.photo-upload{border:1.5px dashed #ddd;border-radius:8px;padding:12px;text-align:center;cursor:pointer;transition:border-color .15s;background:white}
+.photo-upload:hover{border-color:#e07b39}
+.photo-upload input{display:none}
+.photo-upload-label{font-size:11px;color:#aaa;cursor:pointer}
+.photo-preview{display:flex;gap:6px;flex-wrap:wrap;margin-top:6px}
+.photo-thumb{width:60px;height:60px;border-radius:6px;object-fit:cover;border:1.5px solid #eee}
+.submit-btn{background:#e07b39;color:white;border:none;border-radius:10px;padding:10px;font-size:13px;font-weight:700;cursor:pointer;transition:background .15s;font-family:inherit}
+.submit-btn:hover{background:#c96a28}
+.submit-btn:disabled{opacity:0.5;cursor:not-allowed}
+.submit-success{background:#f0faf3;border:1.5px solid #c5e8d0;border-radius:10px;padding:14px;text-align:center}
+.submit-success h4{color:#2d5a3d;font-size:13px;margin-bottom:4px}
+.submit-success p{color:#555;font-size:11px;line-height:1.5}
+.route-preview-tag{display:inline-block;background:#f5f0eb;border-radius:6px;padding:2px 7px;font-size:10px;color:#888;margin:2px}
+
 </style>
 </head>
 <body>
@@ -111,8 +254,9 @@
   </div>
   <button class="topbar-btn" id="filter-btn" onclick="toggleFilter()">🏷️ Filter <span class="badge" id="filter-badge"></span></button>
   <button class="topbar-btn" id="route-btn" onclick="toggleRoute()">🛣️ Route <span class="badge" id="route-badge"></span></button>
-  <button class="topbar-btn" id="pass-topbar-btn" onclick="togglePassOnly()">🎟️ Pass Offers</button>
+  <button class="topbar-btn" id="pass-topbar-btn" onclick="togglePassOnly()" style="background:#fff8f0;border-color:#e07b39;color:#e07b39;font-weight:800">🎟️ Pass Offers</button>
   <button class="topbar-btn" onclick="clearAll()">🗑️ Clear</button>
+  <button class="topbar-btn" id="trips-btn" onclick="toggleTrips()" style="margin-left:auto">🧭 Inspire Me</button>
 </div>
 
 <!-- FILTER DROPDOWN -->
@@ -217,6 +361,7 @@ map.addControl(new mapboxgl.GeolocateControl({positionOptions:{enableHighAccurac
 map.on('load', () => {
   document.getElementById('loading').style.display = 'none';
   renderMarkers();
+  loadSharedRoute();
 });
 
 // Close filter when clicking map
@@ -565,6 +710,13 @@ function drawRouteLine() {
   routeStops.forEach((s,i) => {
     const el = document.createElement('div');
     el.className = 'rpin'; el.textContent = i+1;
+    el.style.pointerEvents = 'all';
+    el.style.cursor = 'pointer';
+    el.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const b = BUSINESSES.find(x => x.id === s.id);
+      if (b) showPopup(b);
+    });
     routePins.push(new mapboxgl.Marker({element:el, offset:[0,-22]}).setLngLat([s.lng,s.lat]).addTo(map));
   });
 
@@ -665,6 +817,506 @@ function avgPrice(b) {
   return 120;
 }
 
+
+// ── TRIPS PANEL ───────────────────────────────────────────────────────────
+let tripPax = 2;
+
+const TRIPS = {
+  bc: {
+    center:[-117.5,51.0], zoom:7, baseSavings:190,
+    stops:[
+      {id:1339,name:"Wild Vedas Adventure Based Wellness",lat:50.1151,  lng:-122.95495,offer:true},
+      {id:1343,name:"Don't BUGMe I'm on Vacation",       lat:51.30045, lng:-116.96537, offer:true},
+      {id:1344,name:"Wild Water Adventures",             lat:51.242654,lng:-116.660415,offer:true},
+      {id:1528,name:"Apex Rafting",                      lat:50.998528,lng:-118.194219,offer:true}
+    ]
+  },
+  ab: {
+    center:[-116.5,52.3], zoom:7, baseSavings:210,
+    stops:[
+      {id:1300,name:"Into the Wild Tours",      lat:51.084423,lng:-115.356764,offer:true},
+      {id:1307,name:"Canmore River Adventures", lat:51.084015,lng:-115.367255,offer:true},
+      {id:1332,name:"Banff Canyoning",          lat:51.05891, lng:-115.16355, offer:true},
+      {id:1540,name:"Jasper Raft Tours",        lat:52.876082,lng:-118.07927, offer:true}
+    ]
+  },
+  ok: {
+    center:[-119.5,49.8], zoom:8, baseSavings:155,
+    stops:[
+      {id:1321,name:"ZipZone Peachland",                     lat:49.802318,lng:-119.838409,offer:true},
+      {id:1322,name:"Lakeside Eco-Sports",                   lat:49.885985,lng:-119.499037,offer:true},
+      {id:1333,name:"Western Canyoning Adventure - Okanagan",lat:49.945653,lng:-119.386,   offer:true},
+      {id:1483,name:"Canyon Raft Company",                   lat:49.304666,lng:-115.128917,offer:false}
+    ]
+  },
+  kt: {
+    center:[-117.2,50.8], zoom:7, baseSavings:175,
+    stops:[
+      {id:1485,name:"Valley Zipline Adventures",lat:50.627743,lng:-116.073804,offer:true},
+      {id:1343,name:"Don't BUGMe I'm on Vacation",lat:51.30045,lng:-116.96537,offer:true},
+      {id:1344,name:"Wild Water Adventures",    lat:51.242654,lng:-116.660415,offer:true},
+      {id:1528,name:"Apex Rafting",             lat:50.998528,lng:-118.194219,offer:true}
+    ]
+  },
+  on: {
+    center:[-77.5,45.8], zoom:6, baseSavings:120,
+    stops:[
+      {id:1317,name:"NANOOK EXPEDITIONS", lat:45.425068,lng:-76.2557,  offer:true},
+      {id:1326,name:"iPaddle Adventures", lat:44.61722, lng:-80.94639, offer:true},
+      {id:1327,name:"Wilderness Tours",   lat:45.588,   lng:-76.776,   offer:false},
+      {id:1323,name:"Paddler Co-op",      lat:45.518,   lng:-77.313,   offer:false}
+    ]
+  }
+};
+
+function toggleTrips() {
+  const panel = document.getElementById('trips-panel');
+  const isOpen = panel.style.display === 'flex';
+  if (isOpen) { closeTrips(); } else { openTrips(); }
+}
+
+function openTrips() {
+  const panel = document.getElementById('trips-panel');
+  panel.style.display = 'flex';
+  panel.style.flexDirection = 'column';
+  panel.style.overflowY = 'auto';
+  document.getElementById('trips-btn').classList.add('active');
+  updateShareBox();
+  updateAllSavings();
+}
+
+function closeTrips() {
+  document.getElementById('trips-panel').style.display = 'none';
+  document.getElementById('trips-btn').classList.remove('active');
+}
+
+function changePax(delta) {
+  tripPax = Math.min(10, Math.max(1, tripPax + delta));
+  document.getElementById('pax-display').textContent = tripPax;
+  updateAllSavings();
+}
+
+function updateAllSavings() {
+  Object.keys(TRIPS).forEach(key => {
+    const t = TRIPS[key];
+    const total = Math.round(t.baseSavings * tripPax);
+    const el = document.getElementById('save-' + key);
+    if (el) el.textContent = '💰 ~$' + total + ' saved for ' + tripPax + (tripPax === 1 ? ' person' : ' people');
+  });
+}
+
+function loadTrip(key) {
+  const trip = TRIPS[key];
+  if (!trip) return;
+  document.querySelectorAll('.icard').forEach(c => c.classList.remove('active'));
+  const card = document.getElementById('icard-' + key);
+  if (card) card.classList.add('active');
+  routeStops = [...trip.stops];
+  map.flyTo({center:trip.center, zoom:trip.zoom, duration:1200});
+  document.getElementById('route-panel').style.display = 'flex';
+  renderMarkers();
+  renderRoute();
+  updateRouteBadge();
+  updateShareBox();
+}
+
+function updateShareBox() {
+  const empty = document.getElementById('submit-empty');
+  const wrap = document.getElementById('submit-form-wrap');
+  if (!empty || !wrap) return;
+  if (routeStops.length === 0) {
+    empty.style.display = 'block';
+    wrap.style.display = 'none';
+  } else {
+    empty.style.display = 'none';
+    wrap.style.display = 'block';
+    updateRouteTagsPreview();
+  }
+  // update share url too
+  const ids = routeStops.map(s => s.id).join(',');
+  const url = window.location.origin + window.location.pathname + '?stops=' + ids;
+  const su = document.getElementById('share-url');
+  if (su) su.value = url;
+}
+
+function copyShareLink() {
+  const input = document.getElementById('share-url');
+  input.select();
+  navigator.clipboard.writeText(input.value).catch(() => document.execCommand('copy'));
+  const btn = document.getElementById('share-copy-btn');
+  btn.textContent = '✓ Copied!';
+  btn.classList.add('copied');
+  setTimeout(() => { btn.textContent = '📋 Copy Link'; btn.classList.remove('copied'); }, 2000);
+}
+
+function shareWhatsApp() {
+  const url = document.getElementById('share-url').value;
+  const msg = encodeURIComponent('Check out my BUGMe.Travel road trip! 🚗✨ ' + url);
+  window.open('https://wa.me/?text=' + msg, '_blank');
+}
+
+// Load shared route from URL on page load
+function loadSharedRoute() {
+  const params = new URLSearchParams(window.location.search);
+  const stops = params.get('stops');
+  if (!stops) return;
+  const ids = stops.split(',').map(Number).filter(Boolean);
+  if (ids.length === 0) return;
+  routeStops = [];
+  ids.forEach(id => {
+    const b = BUSINESSES.find(x => x.id === id);
+    if (b && b.lat && b.lng) routeStops.push({id:b.id,name:b.name,lat:b.lat,lng:b.lng,offer:b.offer});
+  });
+  if (routeStops.length > 0) {
+    setTimeout(() => {
+      document.getElementById('route-panel').style.display = 'flex';
+      renderRoute();
+      updateRouteBadge();
+      if (routeStops.length >= 2) drawRouteLine();
+      const lngs = routeStops.map(s=>s.lng), lats = routeStops.map(s=>s.lat);
+      map.fitBounds([[Math.min(...lngs),Math.min(...lats)],[Math.max(...lngs),Math.max(...lats)]],{padding:80,duration:700});
+    }, 1500);
+  }
+}
 </script>
+
+    <button class="trip-dismiss" onclick="document.getElementById('trip-panel').classList.add('hidden')">Hide ✕</button>
+  </div>
+  <div class="trip-cards">
+
+    <!-- BC Mountain Adventure -->
+    <div class="tcard" id="tcard-bc" onclick="loadTrip('bc')">
+      <div class="tcard-img">
+        <svg viewBox="0 0 190 72" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="tg1" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a3a5c"/><stop offset="100%" style="stop-color:#2d6a8f"/></linearGradient></defs>
+          <rect width="190" height="72" fill="url(#tg1)"/>
+          <polygon points="0,55 35,18 70,55" fill="rgba(255,255,255,0.08)"/>
+          <polygon points="45,55 90,12 135,55" fill="rgba(255,255,255,0.12)"/>
+          <polygon points="110,55 155,22 190,55" fill="rgba(255,255,255,0.08)"/>
+          <polygon points="90,12 82,26 98,26" fill="rgba(255,255,255,0.5)"/>
+          <text x="8" y="66" font-family="Georgia,serif" font-size="9" fill="rgba(255,255,255,0.45)" font-style="italic">British Columbia</text>
+        </svg>
+        <div class="tcard-badge">🎟️ 4 Pass Offers</div>
+      </div>
+      <div class="tcard-body">
+        <span class="tcard-emoji">🏔️</span>
+        <div class="tcard-title">BC Mountain Adventure</div>
+        <div class="tcard-route">Whistler → Golden → Revelstoke</div>
+        <div class="tcard-stops">
+          <div class="tcard-stop"><div class="tcard-num o">1</div><div class="tcard-sname">Wild Vedas, Whistler 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">2</div><div class="tcard-sname">Don't BUGMe, Golden 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">3</div><div class="tcard-sname">Wild Water Adventures 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">4</div><div class="tcard-sname">Apex Rafting, Revelstoke 🎟️</div></div>
+        </div>
+        <div class="tcard-foot">
+          <div class="tcard-save">💰 ~$380 saved</div>
+          <button class="tcard-btn">Load →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Alberta Rockies Loop -->
+    <div class="tcard" id="tcard-ab" onclick="loadTrip('ab')">
+      <div class="tcard-img">
+        <svg viewBox="0 0 190 72" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="tg2" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#5c3d1a"/><stop offset="100%" style="stop-color:#8f6a2a"/></linearGradient></defs>
+          <rect width="190" height="72" fill="url(#tg2)"/>
+          <polygon points="0,60 50,15 100,60" fill="rgba(255,255,255,0.1)"/>
+          <polygon points="70,60 120,10 170,60" fill="rgba(255,255,255,0.13)"/>
+          <polygon points="120,10 113,24 127,24" fill="rgba(255,255,255,0.45)"/>
+          <path d="M0,62 Q48,52 95,58 Q142,64 190,54" stroke="rgba(100,180,255,0.35)" stroke-width="2.5" fill="none"/>
+          <text x="8" y="66" font-family="Georgia,serif" font-size="9" fill="rgba(255,255,255,0.45)" font-style="italic">Alberta</text>
+        </svg>
+        <div class="tcard-badge">🎟️ 4 Pass Offers</div>
+      </div>
+      <div class="tcard-body">
+        <span class="tcard-emoji">⛰️</span>
+        <div class="tcard-title">Alberta Rockies Loop</div>
+        <div class="tcard-route">Canmore → Banff → Jasper</div>
+        <div class="tcard-stops">
+          <div class="tcard-stop"><div class="tcard-num o">1</div><div class="tcard-sname">Into the Wild, Canmore 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">2</div><div class="tcard-sname">Canmore River Adventures 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">3</div><div class="tcard-sname">Banff Canyoning 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">4</div><div class="tcard-sname">Jasper Raft Tours 🎟️</div></div>
+        </div>
+        <div class="tcard-foot">
+          <div class="tcard-save">💰 ~$420 saved</div>
+          <button class="tcard-btn">Load →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Okanagan Wine & Wild -->
+    <div class="tcard" id="tcard-ok" onclick="loadTrip('ok')">
+      <div class="tcard-img">
+        <svg viewBox="0 0 190 72" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="tg3" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#2d5a3d"/><stop offset="100%" style="stop-color:#4a8c5c"/></linearGradient></defs>
+          <rect width="190" height="72" fill="url(#tg3)"/>
+          <ellipse cx="95" cy="45" rx="50" ry="14" fill="rgba(100,180,255,0.22)"/>
+          <ellipse cx="50" cy="58" rx="55" ry="18" fill="rgba(255,255,255,0.05)"/>
+          <line x1="15" y1="35" x2="15" y2="55" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+          <line x1="28" y1="30" x2="28" y2="55" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+          <line x1="41" y1="33" x2="41" y2="55" stroke="rgba(255,255,255,0.2)" stroke-width="1.5"/>
+          <text x="8" y="66" font-family="Georgia,serif" font-size="9" fill="rgba(255,255,255,0.45)" font-style="italic">Okanagan, BC</text>
+        </svg>
+        <div class="tcard-badge">🎟️ 3 Pass Offers</div>
+      </div>
+      <div class="tcard-body">
+        <span class="tcard-emoji">🍷</span>
+        <div class="tcard-title">Okanagan Wine & Wild</div>
+        <div class="tcard-route">Peachland → Kelowna → Fernie</div>
+        <div class="tcard-stops">
+          <div class="tcard-stop"><div class="tcard-num o">1</div><div class="tcard-sname">ZipZone Peachland 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">2</div><div class="tcard-sname">Lakeside Eco-Sports 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">3</div><div class="tcard-sname">Western Canyoning 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num">4</div><div class="tcard-sname">Canyon Raft Co, Elko</div></div>
+        </div>
+        <div class="tcard-foot">
+          <div class="tcard-save">💰 ~$310 saved</div>
+          <button class="tcard-btn">Load →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Kootenay River Rush -->
+    <div class="tcard" id="tcard-kt" onclick="loadTrip('kt')">
+      <div class="tcard-img">
+        <svg viewBox="0 0 190 72" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="tg4" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#1a4a6b"/><stop offset="100%" style="stop-color:#0d2d45"/></linearGradient></defs>
+          <rect width="190" height="72" fill="url(#tg4)"/>
+          <path d="M0,42 Q26,32 52,42 Q78,52 104,38 Q130,24 156,36 Q174,44 190,34" stroke="rgba(100,200,255,0.3)" stroke-width="3.5" fill="none"/>
+          <path d="M0,54 Q35,44 70,54 Q105,64 140,50 Q165,42 190,48" stroke="rgba(100,200,255,0.18)" stroke-width="2.5" fill="none"/>
+          <rect x="0" y="0" width="18" height="72" fill="rgba(0,0,0,0.18)"/>
+          <rect x="172" y="0" width="18" height="72" fill="rgba(0,0,0,0.18)"/>
+          <text x="24" y="66" font-family="Georgia,serif" font-size="9" fill="rgba(255,255,255,0.45)" font-style="italic">Kootenays, BC</text>
+        </svg>
+        <div class="tcard-badge">🎟️ 4 Pass Offers</div>
+      </div>
+      <div class="tcard-body">
+        <span class="tcard-emoji">🌊</span>
+        <div class="tcard-title">Kootenay River Rush</div>
+        <div class="tcard-route">Radium → Golden → Revelstoke</div>
+        <div class="tcard-stops">
+          <div class="tcard-stop"><div class="tcard-num o">1</div><div class="tcard-sname">Valley Zipline, Radium 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">2</div><div class="tcard-sname">Don't BUGMe, Golden 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">3</div><div class="tcard-sname">Wild Water Adventures 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">4</div><div class="tcard-sname">Apex Rafting, Revelstoke 🎟️</div></div>
+        </div>
+        <div class="tcard-foot">
+          <div class="tcard-save">💰 ~$350 saved</div>
+          <button class="tcard-btn">Load →</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Ontario Family Loop -->
+    <div class="tcard" id="tcard-on" onclick="loadTrip('on')">
+      <div class="tcard-img">
+        <svg viewBox="0 0 190 72" xmlns="http://www.w3.org/2000/svg">
+          <defs><linearGradient id="tg5" x1="0%" y1="0%" x2="100%" y2="100%"><stop offset="0%" style="stop-color:#8f3a2a"/><stop offset="100%" style="stop-color:#c96a28"/></linearGradient></defs>
+          <rect width="190" height="72" fill="url(#tg5)"/>
+          <path d="M95,10 L103,28 L120,24 L112,40 L125,44 L95,66 L65,44 L78,40 L70,24 L87,28 Z" fill="rgba(255,255,255,0.1)"/>
+          <ellipse cx="95" cy="68" rx="75" ry="14" fill="rgba(100,180,255,0.18)"/>
+          <text x="8" y="66" font-family="Georgia,serif" font-size="9" fill="rgba(255,255,255,0.45)" font-style="italic">Ontario</text>
+        </svg>
+        <div class="tcard-badge">🎟️ 2 Pass Offers</div>
+      </div>
+      <div class="tcard-body">
+        <span class="tcard-emoji">🍁</span>
+        <div class="tcard-title">Ontario Family Loop</div>
+        <div class="tcard-route">Ottawa → Algonquin → Toronto</div>
+        <div class="tcard-stops">
+          <div class="tcard-stop"><div class="tcard-num o">1</div><div class="tcard-sname">Nanook Expeditions 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num o">2</div><div class="tcard-sname">iPaddle Adventures 🎟️</div></div>
+          <div class="tcard-stop"><div class="tcard-num">3</div><div class="tcard-sname">Wilderness Tours</div></div>
+          <div class="tcard-stop"><div class="tcard-num">4</div><div class="tcard-sname">Paddler Co-op</div></div>
+        </div>
+        <div class="tcard-foot">
+          <div class="tcard-save">💰 ~$240 saved</div>
+          <button class="tcard-btn">Load →</button>
+        </div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+
+<!-- TRIPS PANEL -->
+<div id="trips-panel" class="side-panel" style="display:none">
+  <div class="panel-head">
+    <span>✨ Road Trips</span>
+    <button class="panel-close" onclick="closeTrips()">✕</button>
+  </div>
+
+  <!-- PAX SELECTOR -->
+  <div class="pax-row">
+    <div class="pax-label">👥 Travellers in group</div>
+    <div class="pax-ctrl">
+      <button class="pax-btn" onclick="changePax(-1)">−</button>
+      <div class="pax-num" id="pax-display">2</div>
+      <button class="pax-btn" onclick="changePax(1)">+</button>
+    </div>
+  </div>
+
+  <!-- INSPIRE ME -->
+  <div class="trips-section-label">✨ Inspire Me</div>
+
+  <div id="inspire-cards">
+
+    <div class="icard" id="icard-bc" onclick="loadTrip('bc')">
+      <div class="icard-head">
+        <div class="icard-emoji">🏔️</div>
+        <div class="icard-info">
+          <div class="icard-title">BC Mountain Adventure</div>
+          <div class="icard-route">Whistler → Golden → Revelstoke</div>
+        </div>
+      </div>
+      <div class="icard-stops">
+        <div class="icard-stop"><div class="icard-num o">1</div><div class="icard-sname">Wild Vedas, Whistler 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">2</div><div class="icard-sname">Don't BUGMe, Golden 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">3</div><div class="icard-sname">Wild Water Adventures 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">4</div><div class="icard-sname">Apex Rafting, Revelstoke 🎟️</div></div>
+      </div>
+      <div class="icard-foot">
+        <div class="icard-save" id="save-bc">💰 ~$380 saved</div>
+        <button class="icard-load" onclick="event.stopPropagation();loadTrip('bc')">Load Route →</button>
+      </div>
+    </div>
+
+    <div class="icard" id="icard-ab" onclick="loadTrip('ab')">
+      <div class="icard-head">
+        <div class="icard-emoji">⛰️</div>
+        <div class="icard-info">
+          <div class="icard-title">Alberta Rockies Loop</div>
+          <div class="icard-route">Canmore → Banff → Jasper</div>
+        </div>
+      </div>
+      <div class="icard-stops">
+        <div class="icard-stop"><div class="icard-num o">1</div><div class="icard-sname">Into the Wild, Canmore 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">2</div><div class="icard-sname">Canmore River Adventures 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">3</div><div class="icard-sname">Banff Canyoning 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">4</div><div class="icard-sname">Jasper Raft Tours 🎟️</div></div>
+      </div>
+      <div class="icard-foot">
+        <div class="icard-save" id="save-ab">💰 ~$420 saved</div>
+        <button class="icard-load" onclick="event.stopPropagation();loadTrip('ab')">Load Route →</button>
+      </div>
+    </div>
+
+    <div class="icard" id="icard-ok" onclick="loadTrip('ok')">
+      <div class="icard-head">
+        <div class="icard-emoji">🍷</div>
+        <div class="icard-info">
+          <div class="icard-title">Okanagan Wine & Wild</div>
+          <div class="icard-route">Peachland → Kelowna → Fernie</div>
+        </div>
+      </div>
+      <div class="icard-stops">
+        <div class="icard-stop"><div class="icard-num o">1</div><div class="icard-sname">ZipZone Peachland 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">2</div><div class="icard-sname">Lakeside Eco-Sports 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">3</div><div class="icard-sname">Western Canyoning 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num">4</div><div class="icard-sname">Canyon Raft Co, Elko</div></div>
+      </div>
+      <div class="icard-foot">
+        <div class="icard-save" id="save-ok">💰 ~$310 saved</div>
+        <button class="icard-load" onclick="event.stopPropagation();loadTrip('ok')">Load Route →</button>
+      </div>
+    </div>
+
+    <div class="icard" id="icard-kt" onclick="loadTrip('kt')">
+      <div class="icard-head">
+        <div class="icard-emoji">🌊</div>
+        <div class="icard-info">
+          <div class="icard-title">Kootenay River Rush</div>
+          <div class="icard-route">Radium → Golden → Revelstoke</div>
+        </div>
+      </div>
+      <div class="icard-stops">
+        <div class="icard-stop"><div class="icard-num o">1</div><div class="icard-sname">Valley Zipline, Radium 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">2</div><div class="icard-sname">Don't BUGMe, Golden 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">3</div><div class="icard-sname">Wild Water Adventures 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">4</div><div class="icard-sname">Apex Rafting, Revelstoke 🎟️</div></div>
+      </div>
+      <div class="icard-foot">
+        <div class="icard-save" id="save-kt">💰 ~$350 saved</div>
+        <button class="icard-load" onclick="event.stopPropagation();loadTrip('kt')">Load Route →</button>
+      </div>
+    </div>
+
+    <div class="icard" id="icard-on" onclick="loadTrip('on')">
+      <div class="icard-head">
+        <div class="icard-emoji">🍁</div>
+        <div class="icard-info">
+          <div class="icard-title">Ontario Family Loop</div>
+          <div class="icard-route">Ottawa → Algonquin → Toronto</div>
+        </div>
+      </div>
+      <div class="icard-stops">
+        <div class="icard-stop"><div class="icard-num o">1</div><div class="icard-sname">Nanook Expeditions, Ottawa 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num o">2</div><div class="icard-sname">iPaddle Adventures, Toronto 🎟️</div></div>
+        <div class="icard-stop"><div class="icard-num">3</div><div class="icard-sname">Wilderness Tours</div></div>
+        <div class="icard-stop"><div class="icard-num">4</div><div class="icard-sname">Paddler Co-op</div></div>
+      </div>
+      <div class="icard-foot">
+        <div class="icard-save" id="save-on">💰 ~$240 saved</div>
+        <button class="icard-load" onclick="event.stopPropagation();loadTrip('on')">Load Route →</button>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- MY TRIP / SHARE -->
+  <div class="trips-section-label">🗺️ Submit My Trip</div>
+  <div id="submit-empty" class="share-empty" style="display:block">Add stops to your route on the map first →</div>
+
+  <div id="submit-form-wrap" style="display:none">
+    <div id="submit-success" class="submit-success" style="display:none">
+      <h4>🎉 Trip submitted!</h4>
+      <p>Thanks for sharing your adventure. We'll review it and give you credit when it goes live on Inspire Me!</p>
+      <button onclick="resetSubmitForm()" style="margin-top:8px;background:none;border:1.5px solid #2d5a3d;color:#2d5a3d;border-radius:8px;padding:5px 12px;font-size:11px;cursor:pointer;font-family:inherit">Submit another →</button>
+    </div>
+
+    <div id="submit-form" class="submit-form">
+      <div style="background:#f5f0eb;border-radius:10px;padding:10px 12px;margin-bottom:4px">
+        <div style="font-size:10px;color:#888;font-weight:700;text-transform:uppercase;letter-spacing:0.8px;margin-bottom:6px">Your Route</div>
+        <div id="route-tags-preview"></div>
+      </div>
+
+      <div class="submit-field">
+        <label>Trip Name *</label>
+        <input type="text" id="trip-name-input" placeholder="e.g. Josh's Kootenay Loop" maxlength="50">
+      </div>
+
+      <div class="submit-field">
+        <label>Your Name (for credit) *</label>
+        <input type="text" id="trip-author-input" placeholder="e.g. Josh M." maxlength="40">
+      </div>
+
+      <div class="submit-field">
+        <label>Description / Highlights</label>
+        <textarea id="trip-desc-input" placeholder="What made this trip special? Best moments, tips for other travelers..."></textarea>
+      </div>
+
+      <div class="submit-field">
+        <label>Photos (up to 3)</label>
+        <div class="photo-upload" onclick="document.getElementById('photo-input').click()">
+          <input type="file" id="photo-input" accept="image/*" multiple onchange="handlePhotos(this)">
+          <label class="photo-upload-label">📷 Tap to add photos</label>
+          <div class="photo-preview" id="photo-preview"></div>
+        </div>
+      </div>
+
+      <div style="display:flex;gap:6px">
+        <button class="submit-btn" style="flex:1" onclick="submitTrip()">🚀 Submit My Trip</button>
+        <button onclick="copyShareLink()" style="background:white;border:1.5px solid #ddd;border-radius:10px;padding:10px;font-size:11px;cursor:pointer;color:#555;white-space:nowrap">📋 Share Link</button>
+      </div>
+    </div>
+  </div>
+
+  <input class="share-input" id="share-url" readonly style="display:none">
+
+</div>
+
 </body>
 </html>
