@@ -94,7 +94,7 @@
 .pin.offer{background:#e07b39;width:16px;height:16px}
 .pin.regular{background:#2a6496}
 .pin.lit{transform:scale(2.2);z-index:10}
-.rpin{width:26px;height:26px;border-radius:50%;background:#e07b39;border:2.5px solid white;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.3)}
+.rpin{width:26px;height:26px;border-radius:50%;background:#e07b39;border:2.5px solid white;color:white;font-size:11px;font-weight:700;display:flex;align-items:center;justify-content:center;box-shadow:0 2px 8px rgba(0,0,0,0.3);pointer-events:none}
 #bottombar{position:fixed;bottom:16px;left:12px;z-index:100;display:flex;gap:8px;align-items:center}
 #biz-count{background:white;border-radius:20px;padding:5px 12px;font-size:11px;color:#888;box-shadow:0 2px 8px rgba(0,0,0,0.1)}
 .mapboxgl-ctrl-bottom-right{bottom:56px!important}
@@ -117,6 +117,10 @@
 
 <!-- FILTER DROPDOWN -->
 <div id="filter-panel">
+  <div style="margin-bottom:12px;padding-bottom:12px;border-bottom:1px solid #e5ddd5;display:flex;align-items:center;gap:10px">
+    <div class="fg-label" style="margin:0">🎟️ Road Trip Pass</div>
+    <button id="filter-pass-btn" class="ftag" style="font-size:12px;padding:5px 14px" onclick="passOnly=!passOnly;this.classList.toggle('on',passOnly);document.getElementById('pass-topbar-btn').classList.toggle('active',passOnly);renderMarkers()">🎟️ Show Pass Offers Only</button>
+  </div>
   <div class="fg-grid">
     <div class="fg-section"><div class="fg-label">🌊 Water</div><div class="fg-tags" id="fg-water"></div></div>
     <div class="fg-section"><div class="fg-label">⛰️ Land &amp; Trails</div><div class="fg-tags" id="fg-land"></div></div>
@@ -500,11 +504,13 @@ function renderRoute() {
 
   container.innerHTML = '';
   routeStops.forEach((s,i) => {
+    const b = BUSINESSES.find(x => x.id === s.id);
     const row = document.createElement('div');
     row.className = 'stop-row';
     row.innerHTML = `
       <div class="stop-num">${i+1}</div>
-      <div class="stop-name">${esc(s.name)}${s.offer?'<span class="offer-badge" style="margin-left:4px">🎟️</span>':''}</div>
+      <div class="stop-name" style="cursor:pointer" onclick="showPopup(BUSINESSES.find(x=>x.id===${s.id}));map.flyTo({center:[${s.lng},${s.lat}],zoom:13,duration:600})">${esc(s.name)}${s.offer?'<span class="offer-badge" style="margin-left:4px">🎟️</span>':''}</div>
+      ${b && b.url ? `<a href="${b.url}" target="_blank" style="color:#1a3a5c;font-size:11px;text-decoration:none;flex-shrink:0;padding:0 4px" title="Visit website">🌐</a>` : ''}
       <button class="stop-del" onclick="removeStop(${s.id})">✕</button>`;
     container.appendChild(row);
   });
@@ -559,7 +565,7 @@ function drawRouteLine() {
   routeStops.forEach((s,i) => {
     const el = document.createElement('div');
     el.className = 'rpin'; el.textContent = i+1;
-    routePins.push(new mapboxgl.Marker({element:el}).setLngLat([s.lng,s.lat]).addTo(map));
+    routePins.push(new mapboxgl.Marker({element:el, offset:[0,-22]}).setLngLat([s.lng,s.lat]).addTo(map));
   });
 
   // Fit bounds
@@ -605,6 +611,8 @@ function openGoogleMaps() {
 function togglePassOnly() {
   passOnly = !passOnly;
   document.getElementById('pass-topbar-btn').classList.toggle('active', passOnly);
+  var fpb = document.getElementById('filter-pass-btn');
+  if (fpb) fpb.classList.toggle('on', passOnly);
   renderMarkers();
 }
 
@@ -617,6 +625,8 @@ function clearAll() {
   document.querySelectorAll('.ftag').forEach(b => b.classList.remove('on'));
   passOnly = false;
   document.getElementById('pass-topbar-btn').classList.remove('active');
+  var fpb = document.getElementById('filter-pass-btn');
+  if (fpb) fpb.classList.remove('on');
   document.getElementById('filter-panel').classList.remove('open');
   updateFilterBadge();
   // Clear search
